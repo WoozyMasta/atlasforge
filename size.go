@@ -11,7 +11,7 @@ import (
 // findOptimalSize searches candidate atlas sizes and returns the best fit.
 func findOptimalSize(items []Item, opts Options) (width, height int) {
 	minW, minH := 0, 0
-	totalArea := 0
+	totalArea := int64(0)
 	for _, item := range items {
 		w := item.Width + 2*opts.Padding
 		h := item.Height + 2*opts.Padding
@@ -22,7 +22,7 @@ func findOptimalSize(items []Item, opts Options) (width, height int) {
 			minH = h
 		}
 
-		totalArea += w * h
+		totalArea += int64(w) * int64(h)
 	}
 
 	size := opts.MinSize
@@ -52,7 +52,7 @@ func findOptimalSize(items []Item, opts Options) (width, height int) {
 		} else if absPowerDiff(w, h) > 1 {
 			return
 		}
-		if totalArea > w*h {
+		if totalArea > int64(w)*int64(h) {
 			return
 		}
 
@@ -94,7 +94,7 @@ func findOptimalSize(items []Item, opts Options) (width, height int) {
 }
 
 // findFirstFitSize picks the first valid candidate in iteration order.
-func findFirstFitSize(items []Item, opts Options, startSize int, totalArea int) (int, int) {
+func findFirstFitSize(items []Item, opts Options, startSize int, totalArea int64) (int, int) {
 	try := func(w, h int) bool {
 		if w > opts.MaxSize || h > opts.MaxSize {
 			return false
@@ -107,7 +107,7 @@ func findFirstFitSize(items []Item, opts Options, startSize int, totalArea int) 
 		} else if absPowerDiff(w, h) > 1 {
 			return false
 		}
-		if totalArea > w*h {
+		if totalArea > int64(w)*int64(h) {
 			return false
 		}
 

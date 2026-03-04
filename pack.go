@@ -44,14 +44,34 @@ func prepareSprites(sprites []Sprite) ([]Item, map[string]image.Image, error) {
 		if sprite.Image == nil {
 			return nil, nil, fmt.Errorf("%w: ID=%q", ErrSourceImageMissing, sprite.ID)
 		}
+		imageWidth := sprite.Image.Bounds().Dx()
+		imageHeight := sprite.Image.Bounds().Dy()
+		if sprite.Width > 0 && sprite.Width != imageWidth {
+			return nil, nil, fmt.Errorf(
+				"%w: sprite %q width override=%d image=%d",
+				ErrSourceSizeMismatch,
+				sprite.ID,
+				sprite.Width,
+				imageWidth,
+			)
+		}
+		if sprite.Height > 0 && sprite.Height != imageHeight {
+			return nil, nil, fmt.Errorf(
+				"%w: sprite %q height override=%d image=%d",
+				ErrSourceSizeMismatch,
+				sprite.ID,
+				sprite.Height,
+				imageHeight,
+			)
+		}
 
 		width := sprite.Width
 		height := sprite.Height
 		if width <= 0 {
-			width = sprite.Image.Bounds().Dx()
+			width = imageWidth
 		}
 		if height <= 0 {
-			height = sprite.Image.Bounds().Dy()
+			height = imageHeight
 		}
 		if width <= 0 || height <= 0 {
 			return nil, nil, fmt.Errorf(

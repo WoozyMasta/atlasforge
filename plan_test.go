@@ -215,6 +215,50 @@ func TestPlanExceedsMaxSize(t *testing.T) {
 	}
 }
 
+func TestPlanRejectsItemPaddedSizeExceedsMax(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "a", Width: 250, Height: 32},
+	}
+	opts := Options{
+		MinSize: 64,
+		MaxSize: 256,
+		Padding: 10,
+	}
+
+	_, err := Plan(items, opts)
+	if err == nil {
+		t.Fatal("expected error when padded item exceeds MaxSize")
+	}
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("error %v, want ErrInvalidOptions", err)
+	}
+}
+
+func TestPlanRejectsTotalPaddedAreaExceedsMaxArea(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "a", Width: 40, Height: 40},
+		{ID: "b", Width: 40, Height: 40},
+		{ID: "c", Width: 40, Height: 40},
+	}
+	opts := Options{
+		MinSize: 32,
+		MaxSize: 64,
+		Padding: 0,
+	}
+
+	_, err := Plan(items, opts)
+	if err == nil {
+		t.Fatal("expected error when total area exceeds max atlas area")
+	}
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("error %v, want ErrInvalidOptions", err)
+	}
+}
+
 func TestPackSpriteSizeOverrideMismatch(t *testing.T) {
 	t.Parallel()
 

@@ -16,6 +16,9 @@ func Plan(items []Item, opts Options) (*Layout, error) {
 	if err := validateItems(items); err != nil {
 		return nil, err
 	}
+	if err := validateFitBounds(items, opts); err != nil {
+		return nil, err
+	}
 	if len(items) == 0 {
 		return &Layout{
 			Width:      opts.MinSize,
@@ -116,6 +119,41 @@ func validateItems(items []Item) error {
 		}
 
 		seen[item.ID] = struct{}{}
+	}
+
+	return nil
+}
+
+// validateFitBounds performs cheap pre-checks before heuristic search.
+func validateFitBounds(items []Item, opts Options) error {
+	maxSide := int64(opts.MaxSize)
+	maxAtlasArea := maxSide * maxSide
+	totalPaddedArea := int64(0)
+
+	for i := range items {
+		item := items[i]
+		paddedW := int64(item.Width) + 2*int64(opts.Padding)
+		paddedH := int64(item.Height) + 2*int64(opts.Padding)
+		if paddedW > maxSide || paddedH > maxSide {
+			return fmt.Errorf(
+				"%w: item %q padded size %dx%d exceeds MaxSize=%d",
+				ErrInvalidOptions,
+				item.ID,
+				paddedW,
+				paddedH,
+				opts.MaxSize,
+			)
+		}
+
+		totalPaddedArea += paddedW * paddedH
+		if totalPaddedArea > maxAtlasArea {
+			return fmt.Errorf(
+				"%w: total padded area %d exceeds max atlas area %d",
+				ErrInvalidOptions,
+				totalPaddedArea,
+				maxAtlasArea,
+			)
+		}
 	}
 
 	return nil
