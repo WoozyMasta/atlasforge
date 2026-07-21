@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 WoozyMasta
+// Source: github.com/woozymasta/atlasforge
+
 package atlasforge
 
 import (
@@ -21,7 +25,7 @@ func benchmarkHeuristics() []Heuristic {
 // benchmarkItems builds deterministic rectangular items for planning benchmarks.
 func benchmarkItems(n int) []Item {
 	items := make([]Item, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		w := 8 + ((i * 7) % 47)
 		h := 8 + ((i * 11) % 53)
 		items = append(items, Item{
@@ -71,7 +75,6 @@ func BenchmarkPlanHeuristics(b *testing.B) {
 	base.AllowRotate = true
 
 	for _, heuristic := range benchmarkHeuristics() {
-		heuristic := heuristic
 		b.Run(heuristicName(heuristic), func(b *testing.B) {
 			opts := base
 			opts.Heuristic = heuristic
@@ -100,7 +103,6 @@ func BenchmarkRenderHeuristics(b *testing.B) {
 	base.AllowRotate = true
 
 	for _, heuristic := range benchmarkHeuristics() {
-		heuristic := heuristic
 		b.Run(heuristicName(heuristic), func(b *testing.B) {
 			opts := base
 			opts.Heuristic = heuristic
@@ -134,7 +136,6 @@ func BenchmarkPackHeuristics(b *testing.B) {
 	base.AllowRotate = true
 
 	for _, heuristic := range benchmarkHeuristics() {
-		heuristic := heuristic
 		b.Run(heuristicName(heuristic), func(b *testing.B) {
 			opts := base
 			opts.Heuristic = heuristic

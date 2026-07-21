@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 WoozyMasta
+// Source: github.com/woozymasta/atlasforge
+
 package atlasforge
 
 import (
@@ -46,7 +50,6 @@ func TestPlanValidateOptions(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := Plan(items, tc.opts)
@@ -150,7 +153,6 @@ func TestPlanAllHeuristics(t *testing.T) {
 	}
 
 	for _, heuristic := range heuristics {
-		heuristic := heuristic
 		t.Run(heuristicName(heuristic), func(t *testing.T) {
 			t.Parallel()
 

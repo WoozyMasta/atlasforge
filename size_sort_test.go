@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 WoozyMasta
+// Source: github.com/woozymasta/atlasforge
+
 package atlasforge
 
 import "testing"
@@ -63,13 +67,13 @@ func TestFindOptimalSizePreferHeightTieBreak(t *testing.T) {
 	}
 
 	w1, h1 := findOptimalSize(items, base)
-	if !(w1 == 64 && h1 == 32) {
+	if w1 != 64 || h1 != 32 {
 		t.Fatalf("prefer width default size = %dx%d, want 64x32", w1, h1)
 	}
 
 	base.PreferHeight = true
 	w2, h2 := findOptimalSize(items, base)
-	if !(w2 == 32 && h2 == 64) {
+	if w2 != 32 || h2 != 64 {
 		t.Fatalf("prefer height size = %dx%d, want 32x64", w2, h2)
 	}
 }
