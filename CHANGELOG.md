@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD024 -->
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -12,6 +13,12 @@ and this project adheres to [Semantic Versioning][].
 ### Changed
 ### Removed
 -->
+
+## Unreleased
+
+### Changed
+
+* Lowered the minimum Go version to 1.22.
 
 ## [0.1.0][] - 2026-03-04
 
