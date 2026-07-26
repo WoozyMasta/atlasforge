@@ -12,12 +12,16 @@ import (
 
 // Render renders a precomputed layout using provided image sources.
 func Render(layout *Layout, sources []Source) (image.Image, error) {
+	if err := validateLayout(layout); err != nil {
+		return nil, err
+	}
+
 	sourceMap, err := buildSourceMap(sources)
 	if err != nil {
 		return nil, err
 	}
 
-	return renderWithSourceMap(layout, sourceMap)
+	return renderValidatedWithSourceMap(layout, sourceMap)
 }
 
 // buildSourceMap validates sources and builds ID->image map.
@@ -47,28 +51,20 @@ func renderWithSourceMap(layout *Layout, sourceMap map[string]image.Image) (imag
 		return nil, err
 	}
 
+	return renderValidatedWithSourceMap(layout, sourceMap)
+}
+
+// renderValidatedWithSourceMap renders a layout after its geometry is validated.
+func renderValidatedWithSourceMap(layout *Layout, sourceMap map[string]image.Image) (image.Image, error) {
+	if err := validatePlacementSources(layout, sourceMap); err != nil {
+		return nil, err
+	}
+
 	atlas := image.NewRGBA(image.Rect(0, 0, layout.Width, layout.Height))
 
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
-		src, ok := sourceMap[placement.ID]
-		if !ok {
-			return nil, fmt.Errorf("%w: ID=%q", ErrSourceNotFound, placement.ID)
-		}
-
-		sw := src.Bounds().Dx()
-		sh := src.Bounds().Dy()
-		if sw != placement.Width || sh != placement.Height {
-			return nil, fmt.Errorf(
-				"%w: ID=%q source=%dx%d placement=%dx%d",
-				ErrSourceSizeMismatch,
-				placement.ID,
-				sw,
-				sh,
-				placement.Width,
-				placement.Height,
-			)
-		}
+		src := sourceMap[placement.ID]
 
 		x := placement.X
 		y := placement.Y
@@ -90,7 +86,7 @@ func renderWithSourceMap(layout *Layout, sourceMap map[string]image.Image) (imag
 	return atlas, nil
 }
 
-// validateLayout validates render input layout dimensions.
+// validateLayout validates atlas dimensions and placement geometry for rendering.
 func validateLayout(layout *Layout) error {
 	if layout == nil {
 		return ErrLayoutRequired
@@ -102,6 +98,79 @@ func validateLayout(layout *Layout) error {
 			layout.Width,
 			layout.Height,
 		)
+	}
+
+	maxInt := int(^uint(0) >> 1)
+	if layout.Width > maxInt/4 || layout.Height > maxInt/(layout.Width*4) {
+		return fmt.Errorf(
+			"%w: RGBA dimensions are not representable: Width=%d Height=%d",
+			ErrInvalidLayout,
+			layout.Width,
+			layout.Height,
+		)
+	}
+
+	for i := range layout.Placements {
+		placement := layout.Placements[i]
+		if placement.Width <= 0 || placement.Height <= 0 || placement.X < 0 || placement.Y < 0 {
+			return fmt.Errorf(
+				"%w: invalid placement geometry: ID=%q X=%d Y=%d Width=%d Height=%d",
+				ErrInvalidLayout,
+				placement.ID,
+				placement.X,
+				placement.Y,
+				placement.Width,
+				placement.Height,
+			)
+		}
+
+		effectiveWidth := placement.Width
+		effectiveHeight := placement.Height
+		if placement.Rotated {
+			effectiveWidth, effectiveHeight = effectiveHeight, effectiveWidth
+		}
+
+		// Check coordinates before subtraction so both bounds tests stay safe.
+		if placement.X >= layout.Width || placement.Y >= layout.Height ||
+			effectiveWidth > layout.Width-placement.X || effectiveHeight > layout.Height-placement.Y {
+			return fmt.Errorf(
+				"%w: placement exceeds atlas bounds: ID=%q X=%d Y=%d Width=%d Height=%d Rotated=%t",
+				ErrInvalidLayout,
+				placement.ID,
+				placement.X,
+				placement.Y,
+				placement.Width,
+				placement.Height,
+				placement.Rotated,
+			)
+		}
+	}
+
+	return nil
+}
+
+// validatePlacementSources checks source availability and original dimensions before rendering.
+func validatePlacementSources(layout *Layout, sourceMap map[string]image.Image) error {
+	for i := range layout.Placements {
+		placement := layout.Placements[i]
+		src, ok := sourceMap[placement.ID]
+		if !ok {
+			return fmt.Errorf("%w: ID=%q", ErrSourceNotFound, placement.ID)
+		}
+
+		sw := src.Bounds().Dx()
+		sh := src.Bounds().Dy()
+		if sw != placement.Width || sh != placement.Height {
+			return fmt.Errorf(
+				"%w: ID=%q source=%dx%d placement=%dx%d",
+				ErrSourceSizeMismatch,
+				placement.ID,
+				sw,
+				sh,
+				placement.Width,
+				placement.Height,
+			)
+		}
 	}
 
 	return nil

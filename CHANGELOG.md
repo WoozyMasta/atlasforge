@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning][].
 
 * Lowered the minimum Go version to 1.22.
 
+### Fixed
+
+* Reject invalid atlas placements before allocating or rendering.
+
 ## [0.1.0][] - 2026-03-04
 
 ### Added
