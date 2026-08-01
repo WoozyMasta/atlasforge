@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning][].
 
 ### Fixed
 
+* Preserve non-zero source image bounds when rendering sprites.
 * Reject invalid atlas placements before allocating or rendering.
 
 ## [0.1.0][] - 2026-03-04

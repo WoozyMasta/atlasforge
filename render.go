@@ -78,7 +78,7 @@ func renderValidatedWithSourceMap(layout *Layout, sourceMap map[string]image.Ima
 			atlas,
 			image.Rect(x, y, x+placement.Width, y+placement.Height),
 			src,
-			image.Point{},
+			src.Bounds().Min,
 			draw.Src,
 		)
 	}

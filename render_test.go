@@ -7,6 +7,7 @@ package atlasforge
 import (
 	"errors"
 	"image"
+	"image/color"
 	"testing"
 )
 
@@ -53,6 +54,143 @@ func TestRenderSizeMismatch(t *testing.T) {
 	if !errors.Is(err, ErrSourceSizeMismatch) {
 		t.Fatalf("error %v, want ErrSourceSizeMismatch", err)
 	}
+}
+
+func TestRenderSubImagePreservesSourceBounds(t *testing.T) {
+	t.Parallel()
+
+	full := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	full.SetRGBA(2, 2, color.RGBA{R: 255, A: 255})
+	sub := full.SubImage(image.Rect(2, 2, 3, 3))
+	layout := &Layout{
+		Width:  1,
+		Height: 1,
+		Placements: []Placement{
+			{ID: "a", Width: 1, Height: 1},
+		},
+	}
+
+	got, err := Render(layout, []Source{{ID: "a", Image: sub}})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	if pixel := got.At(0, 0); pixel != (color.RGBA{R: 255, A: 255}) {
+		t.Fatalf("pixel at (0,0) = %v, want opaque red", pixel)
+	}
+}
+
+func TestRenderPreservesNonZeroSourceBounds(t *testing.T) {
+	t.Parallel()
+
+	bounds := image.Rect(-3, 5, -1, 7)
+	nrgba := image.NewNRGBA(bounds)
+	nrgba.SetNRGBA(-3, 5, color.NRGBA{R: 255, A: 255})
+	nrgba.SetNRGBA(-2, 5, color.NRGBA{G: 255, A: 255})
+	nrgba.SetNRGBA(-3, 6, color.NRGBA{B: 255, A: 255})
+	nrgba.SetNRGBA(-2, 6, color.NRGBA{R: 255, G: 255, A: 255})
+
+	palette := color.Palette{
+		color.RGBA{R: 255, A: 255},
+		color.RGBA{G: 255, A: 255},
+		color.RGBA{B: 255, A: 255},
+		color.RGBA{R: 255, B: 255, A: 255},
+	}
+	paletted := image.NewPaletted(bounds, palette)
+	paletted.SetColorIndex(-3, 5, 0)
+	paletted.SetColorIndex(-2, 5, 1)
+	paletted.SetColorIndex(-3, 6, 2)
+	paletted.SetColorIndex(-2, 6, 3)
+
+	tests := []struct {
+		name string
+		src  image.Image
+	}{
+		{name: "NRGBA", src: nrgba},
+		{name: "Paletted", src: paletted},
+		{name: "custom image", src: offsetTestImage{bounds: bounds}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := Render(layoutForSource(test.src), []Source{{ID: "a", Image: test.src}})
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+
+			gotBounds := test.src.Bounds()
+			for y := 0; y < gotBounds.Dy(); y++ {
+				for x := 0; x < gotBounds.Dx(); x++ {
+					want := color.RGBAModel.Convert(test.src.At(gotBounds.Min.X+x, gotBounds.Min.Y+y))
+					if pixel := color.RGBAModel.Convert(got.At(x, y)); pixel != want {
+						t.Errorf("pixel at (%d,%d) = %v, want %v", x, y, pixel, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestRenderRotatedSubImagePreservesSourceBounds(t *testing.T) {
+	t.Parallel()
+
+	full := image.NewRGBA(image.Rect(-2, 4, 2, 8))
+	full.SetRGBA(-2, 4, color.RGBA{R: 255, A: 255})
+	full.SetRGBA(-1, 4, color.RGBA{G: 255, A: 255})
+	sub := full.SubImage(image.Rect(-2, 4, 0, 5))
+	layout := &Layout{
+		Width:  1,
+		Height: 2,
+		Placements: []Placement{
+			{ID: "a", Width: 2, Height: 1, Rotated: true},
+		},
+	}
+
+	got, err := Render(layout, []Source{{ID: "a", Image: sub}})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	rgba := got.(*image.RGBA)
+	if pixel := rgba.RGBAAt(0, 0); pixel != (color.RGBA{R: 255, A: 255}) {
+		t.Fatalf("top rotated pixel = %+v, want opaque red", pixel)
+	}
+	if pixel := rgba.RGBAAt(0, 1); pixel != (color.RGBA{G: 255, A: 255}) {
+		t.Fatalf("bottom rotated pixel = %+v, want opaque green", pixel)
+	}
+}
+
+// layoutForSource returns a layout sized to the source image bounds.
+func layoutForSource(src image.Image) *Layout {
+	bounds := src.Bounds()
+	return &Layout{
+		Width:  bounds.Dx(),
+		Height: bounds.Dy(),
+		Placements: []Placement{
+			{ID: "a", Width: bounds.Dx(), Height: bounds.Dy()},
+		},
+	}
+}
+
+// offsetTestImage provides deterministic pixels in a non-zero coordinate space.
+type offsetTestImage struct {
+	bounds image.Rectangle
+}
+
+// ColorModel reports the pixel format used by offsetTestImage.
+func (i offsetTestImage) ColorModel() color.Model {
+	return color.RGBAModel
+}
+
+// Bounds reports the image's non-zero source coordinate space.
+func (i offsetTestImage) Bounds() image.Rectangle {
+	return i.bounds
+}
+
+// At returns a pixel whose channels encode its position within the image.
+func (i offsetTestImage) At(x, y int) color.Color {
+	return color.RGBA{R: uint8(x - i.bounds.Min.X), G: uint8(y - i.bounds.Min.Y), A: 255}
 }
 
 func TestRenderInvalidLayoutSize(t *testing.T) {
