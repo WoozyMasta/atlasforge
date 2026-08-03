@@ -217,6 +217,19 @@ func TestPlanExceedsMaxSize(t *testing.T) {
 	}
 }
 
+func TestPlanReturnsPlacementErrorWhenNoCandidateFits(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "a", Width: 9, Height: 9},
+		{ID: "b", Width: 9, Height: 9},
+	}
+	_, err := Plan(items, Options{MinSize: 16, MaxSize: 16})
+	if !errors.Is(err, ErrPlacementFailed) {
+		t.Fatalf("error %v, want ErrPlacementFailed", err)
+	}
+}
+
 func TestPlanRejectsItemPaddedSizeExceedsMax(t *testing.T) {
 	t.Parallel()
 

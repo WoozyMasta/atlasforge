@@ -9,39 +9,34 @@ import (
 )
 
 // findOptimalSize searches candidate atlas sizes and returns the best fit.
-func findOptimalSize(items []Item, opts Options) (width, height int) {
-	minW, minH := 0, 0
+func findOptimalSize(items []Item, opts Options) (width, height int, found bool) {
+	minW, minH := opts.MinSize, opts.MinSize
 	totalArea := int64(0)
 	for _, item := range items {
 		w := item.Width + 2*opts.Padding
 		h := item.Height + 2*opts.Padding
-		if w > minW {
-			minW = w
-		}
-		if h > minH {
-			minH = h
+		if opts.AllowRotate {
+			minSide := min(w, h)
+			minW = max(minW, minSide)
+			minH = max(minH, minSide)
+		} else {
+			minW = max(minW, w)
+			minH = max(minH, h)
 		}
 
 		totalArea += int64(w) * int64(h)
 	}
 
-	size := opts.MinSize
-	if minW > size {
-		size = nextPowerOfTwo(minW)
-	}
-	if minH > size {
-		size = nextPowerOfTwo(minH)
-	}
-
-	bestW, bestH := size, size
+	sizes := candidateSizes(opts.MinSize, opts.MaxSize)
+	bestW, bestH := 0, 0
 	bestScore := math.MaxFloat64
 	heuristic := normalizeHeuristic(opts.Heuristic)
 	if heuristic == HeuristicFirstFit {
-		return findFirstFitSize(items, opts, size, totalArea)
+		return findFirstFitSize(items, opts, sizes, minW, minH, totalArea)
 	}
 
 	try := func(w, h int) {
-		if w > opts.MaxSize || h > opts.MaxSize {
+		if w < minW || h < minH {
 			return
 		}
 
@@ -70,33 +65,39 @@ func findOptimalSize(items []Item, opts Options) (width, height int) {
 	}
 
 	if opts.ForceSquare {
-		for s := size; s <= opts.MaxSize; s *= 2 {
+		for _, s := range sizes {
 			try(s, s)
 		}
-		return bestW, bestH
+		return bestW, bestH, bestW > 0
 	}
 
 	if opts.PreferHeight {
-		for w := size; w <= opts.MaxSize; w *= 2 {
-			for h := size; h <= opts.MaxSize; h *= 2 {
+		for _, w := range sizes {
+			for _, h := range sizes {
 				try(w, h)
 			}
 		}
 	} else {
-		for h := size; h <= opts.MaxSize; h *= 2 {
-			for w := size; w <= opts.MaxSize; w *= 2 {
+		for _, h := range sizes {
+			for _, w := range sizes {
 				try(w, h)
 			}
 		}
 	}
 
-	return bestW, bestH
+	return bestW, bestH, bestW > 0
 }
 
-// findFirstFitSize picks the first valid candidate in iteration order.
-func findFirstFitSize(items []Item, opts Options, startSize int, totalArea int64) (int, int) {
+// findFirstFitSize picks the first valid candidate in the established iteration order.
+func findFirstFitSize(
+	items []Item,
+	opts Options,
+	sizes []int,
+	minW, minH int,
+	totalArea int64,
+) (int, int, bool) {
 	try := func(w, h int) bool {
-		if w > opts.MaxSize || h > opts.MaxSize {
+		if w < minW || h < minH {
 			return false
 		}
 
@@ -114,35 +115,55 @@ func findFirstFitSize(items []Item, opts Options, startSize int, totalArea int64
 		return canFitMaxRects(items, w, h, opts, HeuristicFirstFit)
 	}
 
+	// FirstFit deliberately ignores AspectPenalty and returns the first fitting size.
 	if opts.ForceSquare {
-		for s := startSize; s <= opts.MaxSize; s *= 2 {
+		for _, s := range sizes {
 			if try(s, s) {
-				return s, s
+				return s, s, true
 			}
 		}
 
-		return startSize, startSize
+		return 0, 0, false
 	}
 
 	if opts.PreferHeight {
-		for w := startSize; w <= opts.MaxSize; w *= 2 {
-			for h := startSize; h <= opts.MaxSize; h *= 2 {
+		for _, w := range sizes {
+			for _, h := range sizes {
 				if try(w, h) {
-					return w, h
+					return w, h, true
 				}
 			}
 		}
 	} else {
-		for h := startSize; h <= opts.MaxSize; h *= 2 {
-			for w := startSize; w <= opts.MaxSize; w *= 2 {
+		for _, h := range sizes {
+			for _, w := range sizes {
 				if try(w, h) {
-					return w, h
+					return w, h, true
 				}
 			}
 		}
 	}
 
-	return startSize, startSize
+	return 0, 0, false
+}
+
+// candidateSizes builds the deterministic MinSize doubling ladder through MaxSize.
+func candidateSizes(minSize, maxSize int) []int {
+	sizes := make([]int, 0, 8)
+	for size := minSize; ; {
+		sizes = append(sizes, size)
+		if size > maxSize/2 {
+			break
+		}
+
+		size *= 2
+	}
+
+	if sizes[len(sizes)-1] != maxSize {
+		sizes = append(sizes, maxSize)
+	}
+
+	return sizes
 }
 
 // candidateScore returns weighted area score used by optimal size search.

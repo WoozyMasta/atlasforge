@@ -6,6 +6,186 @@ package atlasforge
 
 import "testing"
 
+func TestPlanSearchesIndependentSizeCandidates(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		item  Item
+		opts  Options
+		wantW int
+		wantH int
+	}{
+		{
+			name:  "wide rectangle",
+			item:  Item{ID: "a", Width: 40, Height: 20},
+			opts:  Options{MinSize: 16, MaxSize: 128, AspectPenalty: 0.25},
+			wantW: 64,
+			wantH: 32,
+		},
+		{
+			name:  "tall rectangle",
+			item:  Item{ID: "a", Width: 20, Height: 40},
+			opts:  Options{MinSize: 16, MaxSize: 128, AspectPenalty: 0.25},
+			wantW: 32,
+			wantH: 64,
+		},
+		{
+			name:  "non-power-of-two maximum",
+			item:  Item{ID: "a", Width: 33, Height: 33},
+			opts:  Options{MinSize: 16, MaxSize: 48},
+			wantW: 48,
+			wantH: 48,
+		},
+		{
+			name:  "non-power-of-two minimum and maximum",
+			item:  Item{ID: "a", Width: 40, Height: 40},
+			opts:  Options{MinSize: 24, MaxSize: 60},
+			wantW: 48,
+			wantH: 48,
+		},
+		{
+			name:  "fixed minimum and maximum",
+			item:  Item{ID: "a", Width: 12, Height: 8},
+			opts:  Options{MinSize: 32, MaxSize: 32},
+			wantW: 32,
+			wantH: 32,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			layout, err := Plan([]Item{test.item}, test.opts)
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if layout.Width != test.wantW || layout.Height != test.wantH {
+				t.Fatalf("layout size = %dx%d, want %dx%d", layout.Width, layout.Height, test.wantW, test.wantH)
+			}
+		})
+	}
+}
+
+func TestPlanSizeSearchSupportsRotation(t *testing.T) {
+	t.Parallel()
+
+	item := Item{ID: "a", Width: 40, Height: 20}
+	opts := Options{
+		MinSize:      16,
+		MaxSize:      64,
+		AllowRotate:  true,
+		PreferHeight: true,
+		Heuristic:    HeuristicBestShortSideFit,
+	}
+
+	layout, err := Plan([]Item{item}, opts)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if layout.Width != 32 || layout.Height != 64 {
+		t.Fatalf("rotated layout size = %dx%d, want 32x64", layout.Width, layout.Height)
+	}
+	if !layout.Placements[0].Rotated {
+		t.Fatal("placement is not rotated")
+	}
+}
+
+func TestPlanFirstFitIgnoresAspectPenalty(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "a", Width: 30, Height: 20},
+		{ID: "b", Width: 30, Height: 20},
+	}
+	penalties := []struct {
+		name  string
+		value float64
+	}{
+		{name: "zero", value: 0},
+		{name: "high", value: 100},
+	}
+	for _, penalty := range penalties {
+		t.Run(penalty.name, func(t *testing.T) {
+			t.Parallel()
+
+			layout, err := Plan(items, Options{
+				MinSize:       16,
+				MaxSize:       128,
+				AspectPenalty: penalty.value,
+				Heuristic:     HeuristicFirstFit,
+			})
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if layout.Width != 64 || layout.Height != 32 {
+				t.Fatalf("FirstFit size = %dx%d, want 64x32", layout.Width, layout.Height)
+			}
+		})
+	}
+}
+
+func TestPlanCandidateCorpusDoesNotRegressAreaOrBounds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		items   []Item
+		opts    Options
+		maxArea int
+	}{
+		{
+			name: "mixed sprites",
+			items: []Item{
+				{ID: "a", Width: 10, Height: 12},
+				{ID: "b", Width: 8, Height: 8},
+				{ID: "c", Width: 5, Height: 14},
+				{ID: "d", Width: 11, Height: 7},
+			},
+			opts:    Options{MinSize: 32, MaxSize: 64, Padding: 1, Heuristic: HeuristicBottomLeft},
+			maxArea: 1024,
+		},
+		{
+			name: "two wide sprites",
+			items: []Item{
+				{ID: "a", Width: 30, Height: 20},
+				{ID: "b", Width: 30, Height: 20},
+			},
+			opts:    Options{MinSize: 16, MaxSize: 64, AspectPenalty: 0.25, Heuristic: HeuristicBestShortSideFit},
+			maxArea: 4096,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			layout, err := Plan(test.items, test.opts)
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if area := layout.Width * layout.Height; area > test.maxArea {
+				t.Fatalf("atlas area = %d, want <= %d", area, test.maxArea)
+			}
+
+			for _, placement := range layout.Placements {
+				width, height := placement.Width, placement.Height
+				if placement.Rotated {
+					width, height = height, width
+				}
+				x := placement.X - test.opts.Padding
+				y := placement.Y - test.opts.Padding
+				width += 2 * test.opts.Padding
+				height += 2 * test.opts.Padding
+				if x < 0 || y < 0 || x+width > layout.Width || y+height > layout.Height {
+					t.Fatalf("placement exceeds atlas: %+v atlas=%dx%d", placement, layout.Width, layout.Height)
+				}
+			}
+		})
+	}
+}
+
 func TestSortItemsForPacking(t *testing.T) {
 	t.Parallel()
 
@@ -42,12 +222,18 @@ func TestFindOptimalSizeForceSquare(t *testing.T) {
 		Heuristic:   HeuristicBestShortSideFit,
 	}
 
-	w, h := findOptimalSize(items, opts)
+	w, h, found := findOptimalSize(items, opts)
+	if !found {
+		t.Fatal("findOptimalSize did not find a fit")
+	}
 	if w != h {
 		t.Fatalf("force square size = %dx%d, want square", w, h)
 	}
 	if w < 40 {
 		t.Fatalf("force square width = %d, want >= 40", w)
+	}
+	if w != 64 || h != 64 {
+		t.Fatalf("force square size = %dx%d, want 64x64", w, h)
 	}
 }
 
@@ -66,13 +252,19 @@ func TestFindOptimalSizePreferHeightTieBreak(t *testing.T) {
 		Heuristic:     HeuristicBestShortSideFit,
 	}
 
-	w1, h1 := findOptimalSize(items, base)
+	w1, h1, found := findOptimalSize(items, base)
+	if !found {
+		t.Fatal("findOptimalSize did not find a fit")
+	}
 	if w1 != 64 || h1 != 32 {
 		t.Fatalf("prefer width default size = %dx%d, want 64x32", w1, h1)
 	}
 
 	base.PreferHeight = true
-	w2, h2 := findOptimalSize(items, base)
+	w2, h2, found := findOptimalSize(items, base)
+	if !found {
+		t.Fatal("findOptimalSize did not find a fit")
+	}
 	if w2 != 32 || h2 != 64 {
 		t.Fatalf("prefer height size = %dx%d, want 32x64", w2, h2)
 	}

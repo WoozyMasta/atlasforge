@@ -4,23 +4,6 @@
 
 package atlasforge
 
-// nextPowerOfTwo returns the smallest power of two >= n.
-func nextPowerOfTwo(n int) int {
-	if n <= 0 {
-		return 1
-	}
-	if n&(n-1) == 0 {
-		return n
-	}
-
-	p := 1
-	for p < n {
-		p <<= 1
-	}
-
-	return p
-}
-
 // absPowerDiff returns absolute difference between power-of-two exponents.
 func absPowerDiff(a, b int) int {
 	pa := powerOfTwoCeil(a)

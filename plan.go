@@ -31,13 +31,12 @@ func Plan(items []Item, opts Options) (*Layout, error) {
 	copy(work, items)
 	sortItemsForPacking(work, opts)
 
-	width, height := findOptimalSize(work, opts)
-	if width > opts.MaxSize || height > opts.MaxSize {
+	width, height, found := findOptimalSize(work, opts)
+	if !found {
 		return nil, fmt.Errorf(
-			"%w: required atlas size %dx%d exceeds MaxSize=%d",
-			ErrInvalidOptions,
-			width,
-			height,
+			"%w: no atlas candidate fits within MinSize=%d MaxSize=%d",
+			ErrPlacementFailed,
+			opts.MinSize,
 			opts.MaxSize,
 		)
 	}

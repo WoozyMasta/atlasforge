@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning][].
 
 ### Fixed
 
+* Consider valid atlas width/height candidates independently
+  and respect maximum bounds.
 * Preserve non-zero source image bounds when rendering sprites.
 * Reject invalid atlas placements before allocating or rendering.
 
