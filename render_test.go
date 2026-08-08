@@ -190,7 +190,15 @@ func (i offsetTestImage) Bounds() image.Rectangle {
 
 // At returns a pixel whose channels encode its position within the image.
 func (i offsetTestImage) At(x, y int) color.Color {
-	return color.RGBA{R: uint8(x - i.bounds.Min.X), G: uint8(y - i.bounds.Min.Y), A: 255}
+	var r, g uint8
+	if x != i.bounds.Min.X {
+		r = 1
+	}
+	if y != i.bounds.Min.Y {
+		g = 1
+	}
+
+	return color.RGBA{R: r, G: g, A: 255}
 }
 
 func TestRenderInvalidLayoutSize(t *testing.T) {
