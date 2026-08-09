@@ -13,10 +13,10 @@ func Plan(items []Item, opts Options) (*Layout, error) {
 	if err := validateOptions(opts); err != nil {
 		return nil, err
 	}
-	if err := validateItems(items); err != nil {
+	if err := validateFitBounds(items, opts); err != nil {
 		return nil, err
 	}
-	if err := validateFitBounds(items, opts); err != nil {
+	if err := validateItems(items); err != nil {
 		return nil, err
 	}
 	if len(items) == 0 {
@@ -89,6 +89,15 @@ func validateOptions(opts Options) error {
 			opts.MaxSize,
 		)
 	}
+
+	maxInt := int(^uint(0) >> 1)
+	if opts.MaxSize > maxInt/opts.MaxSize {
+		return fmt.Errorf(
+			"%w: MaxSize squared exceeds representable int area: MaxSize=%d",
+			ErrInvalidOptions,
+			opts.MaxSize,
+		)
+	}
 	if opts.Padding < 0 {
 		return fmt.Errorf("%w: Padding=%d", ErrInvalidOptions, opts.Padding)
 	}
@@ -125,15 +134,24 @@ func validateItems(items []Item) error {
 
 // validateFitBounds performs cheap pre-checks before heuristic search.
 func validateFitBounds(items []Item, opts Options) error {
-	maxSide := int64(opts.MaxSize)
-	maxAtlasArea := maxSide * maxSide
-	totalPaddedArea := int64(0)
+	maxAtlasArea := opts.MaxSize * opts.MaxSize
+	totalPaddedArea := 0
 
 	for i := range items {
 		item := items[i]
-		paddedW := int64(item.Width) + 2*int64(opts.Padding)
-		paddedH := int64(item.Height) + 2*int64(opts.Padding)
-		if paddedW > maxSide || paddedH > maxSide {
+		if item.ID == "" || item.Width <= 0 || item.Height <= 0 {
+			continue
+		}
+
+		paddedW, ok := paddedDimension(item.Width, opts.Padding)
+		if !ok {
+			return fmt.Errorf("%w: padded width overflows int for item %q", ErrInvalidOptions, item.ID)
+		}
+		paddedH, ok := paddedDimension(item.Height, opts.Padding)
+		if !ok {
+			return fmt.Errorf("%w: padded height overflows int for item %q", ErrInvalidOptions, item.ID)
+		}
+		if paddedW > opts.MaxSize || paddedH > opts.MaxSize {
 			return fmt.Errorf(
 				"%w: item %q padded size %dx%d exceeds MaxSize=%d",
 				ErrInvalidOptions,
@@ -144,18 +162,28 @@ func validateFitBounds(items []Item, opts Options) error {
 			)
 		}
 
-		totalPaddedArea += paddedW * paddedH
-		if totalPaddedArea > maxAtlasArea {
+		itemArea := paddedW * paddedH
+		if itemArea > maxAtlasArea-totalPaddedArea {
 			return fmt.Errorf(
-				"%w: total padded area %d exceeds max atlas area %d",
+				"%w: total padded area exceeds max atlas area %d",
 				ErrInvalidOptions,
-				totalPaddedArea,
 				maxAtlasArea,
 			)
 		}
+		totalPaddedArea += itemArea
 	}
 
 	return nil
+}
+
+// paddedDimension returns size plus two padding margins when the result fits int.
+func paddedDimension(size, padding int) (int, bool) {
+	maxInt := int(^uint(0) >> 1)
+	if size <= 0 || padding < 0 || padding > (maxInt-size)/2 {
+		return 0, false
+	}
+
+	return size + 2*padding, true
 }
 
 // normalizeHeuristic normalizes out-of-range heuristic values.

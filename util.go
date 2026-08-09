@@ -24,7 +24,12 @@ func powerOfTwoCeil(n int) int {
 
 	p := 0
 	v := 1
+	maxInt := int(^uint(0) >> 1)
 	for v < n {
+		if v > maxInt/2 {
+			return p + 1
+		}
+
 		v <<= 1
 		p++
 	}

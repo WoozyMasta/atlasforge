@@ -6,7 +6,7 @@ package atlasforge
 
 import "sort"
 
-// sortItemsForPacking sorts bigger items first for better packing density.
+// sortItemsForPacking sorts bigger items first after Plan validates padded sizes and area.
 func sortItemsForPacking(items []Item, opts Options) {
 	sort.Slice(items, func(i, j int) bool {
 		wi := items[i].Width + 2*opts.Padding

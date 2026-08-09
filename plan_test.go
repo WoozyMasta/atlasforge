@@ -63,6 +63,56 @@ func TestPlanValidateOptions(t *testing.T) {
 	}
 }
 
+func TestPlanRejectsOverflowingDimensionsAndPadding(t *testing.T) {
+	t.Parallel()
+
+	maxInt := int(^uint(0) >> 1)
+	tests := []struct {
+		name string
+		item Item
+		opts Options
+	}{
+		{
+			name: "unrepresentable maximum area",
+			item: Item{ID: "a", Width: 1, Height: 1},
+			opts: Options{MinSize: 1, MaxSize: maxInt},
+		},
+		{
+			name: "all maximum integer inputs",
+			item: Item{ID: "a", Width: maxInt, Height: 1},
+			opts: Options{MinSize: 1, MaxSize: maxInt, Padding: maxInt},
+		},
+		{
+			name: "padded dimension overflow",
+			item: Item{ID: "a", Width: maxInt, Height: 1},
+			opts: Options{MinSize: 1, MaxSize: 16, Padding: maxInt},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Plan([]Item{test.item}, test.opts)
+			if !errors.Is(err, ErrInvalidOptions) {
+				t.Fatalf("error %v, want ErrInvalidOptions", err)
+			}
+		})
+	}
+}
+
+func TestPaddedDimensionChecksIntBoundary(t *testing.T) {
+	t.Parallel()
+
+	maxInt := int(^uint(0) >> 1)
+	if got, ok := paddedDimension(maxInt-2, 1); !ok || got != maxInt {
+		t.Fatalf("paddedDimension(maxInt-2, 1) = %d, %t; want %d, true", got, ok, maxInt)
+	}
+	if _, ok := paddedDimension(maxInt-1, 1); ok {
+		t.Fatal("paddedDimension(maxInt-1, 1) unexpectedly succeeded")
+	}
+}
+
 func TestPlanRejectsDuplicateIDs(t *testing.T) {
 	t.Parallel()
 

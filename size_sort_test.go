@@ -4,7 +4,11 @@
 
 package atlasforge
 
-import "testing"
+import (
+	"math"
+	"strconv"
+	"testing"
+)
 
 func TestPlanSearchesIndependentSizeCandidates(t *testing.T) {
 	t.Parallel()
@@ -65,6 +69,50 @@ func TestPlanSearchesIndependentSizeCandidates(t *testing.T) {
 				t.Fatalf("layout size = %dx%d, want %dx%d", layout.Width, layout.Height, test.wantW, test.wantH)
 			}
 		})
+	}
+}
+
+func TestCandidateScoreUsesFloatProduct(t *testing.T) {
+	t.Parallel()
+
+	w, h := int(1<<16), int(1<<16)
+	want := float64(w) * float64(h)
+	if got := candidateScore(w, h, 0); got != want {
+		t.Fatalf("candidateScore(%d,%d,0) = %g, want %g", w, h, got, want)
+	}
+}
+
+func TestCandidateScoreAvoidsNonFiniteResults(t *testing.T) {
+	t.Parallel()
+
+	for _, penalty := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if got := candidateScore(8, 4, penalty); math.IsNaN(got) || math.IsInf(got, 0) {
+			t.Fatalf("candidateScore with penalty %g = %g, want finite score", penalty, got)
+		}
+	}
+}
+
+func TestCandidateSizesNearMaxIntTerminate(t *testing.T) {
+	t.Parallel()
+
+	maxInt := int(^uint(0) >> 1)
+	sizes := candidateSizes(maxInt/2, maxInt)
+	if len(sizes) == 0 || sizes[len(sizes)-1] != maxInt {
+		t.Fatalf("candidate sizes = %v, want final size %d", sizes, maxInt)
+	}
+	for i := 1; i < len(sizes); i++ {
+		if sizes[i] <= sizes[i-1] {
+			t.Fatalf("candidate sizes are not increasing: %v", sizes)
+		}
+	}
+}
+
+func TestPowerOfTwoCeilNearMaxIntTerminates(t *testing.T) {
+	t.Parallel()
+
+	maxInt := int(^uint(0) >> 1)
+	if got, want := powerOfTwoCeil(maxInt), strconv.IntSize-1; got != want {
+		t.Fatalf("powerOfTwoCeil(maxInt) = %d, want %d", got, want)
 	}
 }
 

@@ -8,10 +8,10 @@ import (
 	"math"
 )
 
-// findOptimalSize searches candidate atlas sizes and returns the best fit.
+// findOptimalSize searches candidate atlas sizes after Plan validates arithmetic bounds.
 func findOptimalSize(items []Item, opts Options) (width, height int, found bool) {
 	minW, minH := opts.MinSize, opts.MinSize
-	totalArea := int64(0)
+	totalArea := 0
 	for _, item := range items {
 		w := item.Width + 2*opts.Padding
 		h := item.Height + 2*opts.Padding
@@ -24,7 +24,7 @@ func findOptimalSize(items []Item, opts Options) (width, height int, found bool)
 			minH = max(minH, h)
 		}
 
-		totalArea += int64(w) * int64(h)
+		totalArea += w * h
 	}
 
 	sizes := candidateSizes(opts.MinSize, opts.MaxSize)
@@ -47,7 +47,7 @@ func findOptimalSize(items []Item, opts Options) (width, height int, found bool)
 		} else if absPowerDiff(w, h) > 1 {
 			return
 		}
-		if totalArea > int64(w)*int64(h) {
+		if totalArea > w*h {
 			return
 		}
 
@@ -94,7 +94,7 @@ func findFirstFitSize(
 	opts Options,
 	sizes []int,
 	minW, minH int,
-	totalArea int64,
+	totalArea int,
 ) (int, int, bool) {
 	try := func(w, h int) bool {
 		if w < minW || h < minH {
@@ -108,7 +108,7 @@ func findFirstFitSize(
 		} else if absPowerDiff(w, h) > 1 {
 			return false
 		}
-		if totalArea > int64(w)*int64(h) {
+		if totalArea > w*h {
 			return false
 		}
 
@@ -169,8 +169,12 @@ func candidateSizes(minSize, maxSize int) []int {
 // candidateScore returns weighted area score used by optimal size search.
 func candidateScore(w, h int, aspectPenalty float64) float64 {
 	aspect := float64(max(w, h)) / float64(min(w, h))
+	score := (float64(w) * float64(h)) * (1.0 + aspectPenalty*(aspect-1.0))
+	if math.IsNaN(score) || math.IsInf(score, 0) {
+		return math.MaxFloat64
+	}
 
-	return float64(w*h) * (1.0 + aspectPenalty*(aspect-1.0))
+	return score
 }
 
 // isBetterCandidate checks if candidate could replace current best by score/tie policy.

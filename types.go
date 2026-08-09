@@ -32,6 +32,7 @@ type Options struct {
 
 	// MaxSize is the upper bound for each atlas side candidate.
 	// Plan/Pack fail when items require a larger side.
+	// Its square must fit in int for planner area calculations.
 	MaxSize int `json:"max_size" yaml:"max_size"`
 
 	// Padding reserves empty pixels around each placed item.
