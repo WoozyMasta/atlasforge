@@ -4,6 +4,9 @@
 
 package atlasforge
 
+// maxScore is the upper bound for MaxRects primary and secondary scores.
+const maxScore int64 = 1<<63 - 1
+
 // mrRect is an internal MaxRects rectangle.
 type mrRect struct {
 	X, Y, W, H int
@@ -58,7 +61,7 @@ func (m *maxRects) Insert(w, h int, heuristic Heuristic) (mrRect, bool) {
 	}
 
 	best := mrRect{}
-	pri, sec := 1<<30, 1<<30
+	pri, sec := maxScore, maxScore
 	found := false
 
 	for i := 0; i < len(m.free); i++ {
@@ -125,7 +128,7 @@ func (m *maxRects) place(used mrRect) {
 }
 
 // score calculates ranking values for the given heuristic.
-func (m *maxRects) score(heuristic Heuristic, fr mrRect, rw, rh int) (pri, sec int) {
+func (m *maxRects) score(heuristic Heuristic, fr mrRect, rw, rh int) (pri, sec int64) {
 	switch heuristic {
 	case HeuristicBestShortSideFit:
 		leftoverH := fr.W - rw
@@ -147,7 +150,7 @@ func (m *maxRects) score(heuristic Heuristic, fr mrRect, rw, rh int) (pri, sec i
 			longSide = leftoverH
 		}
 
-		return shortSide, longSide
+		return int64(shortSide), int64(longSide)
 
 	case HeuristicBestLongSideFit:
 		leftoverH := fr.W - rw
@@ -169,10 +172,10 @@ func (m *maxRects) score(heuristic Heuristic, fr mrRect, rw, rh int) (pri, sec i
 			longSide = leftoverH
 		}
 
-		return longSide, shortSide
+		return int64(longSide), int64(shortSide)
 
 	case HeuristicBestAreaFit:
-		areaFit := fr.W*fr.H - rw*rh
+		areaFit := int64(fr.W)*int64(fr.H) - int64(rw)*int64(rh)
 		leftoverH := fr.W - rw
 		if leftoverH < 0 {
 			leftoverH = -leftoverH
@@ -185,27 +188,27 @@ func (m *maxRects) score(heuristic Heuristic, fr mrRect, rw, rh int) (pri, sec i
 
 		shortSide := min(leftoverH, leftoverV)
 
-		return areaFit, shortSide
+		return areaFit, int64(shortSide)
 
 	case HeuristicBottomLeft:
-		return fr.Y + rh, fr.X
+		return int64(fr.Y + rh), int64(fr.X)
 
 	case HeuristicContactPoint:
 		return -m.contactScore(fr.X, fr.Y, rw, rh), 0
 
 	default:
-		return 1 << 30, 1 << 30
+		return maxScore, maxScore
 	}
 }
 
 // contactScore calculates contact surface score for ContactPoint heuristic.
-func (m *maxRects) contactScore(x, y, w, h int) int {
-	score := 0
+func (m *maxRects) contactScore(x, y, w, h int) int64 {
+	score := int64(0)
 	if x == 0 || x+w == m.w {
-		score += h
+		score += int64(h)
 	}
 	if y == 0 || y+h == m.h {
-		score += w
+		score += int64(w)
 	}
 
 	for i := 0; i < len(m.used); i++ {
@@ -222,7 +225,7 @@ func (m *maxRects) contactScore(x, y, w, h int) int {
 }
 
 // commonInterval returns overlap length between [a0,a1) and [b0,b1).
-func commonInterval(a0, a1, b0, b1 int) int {
+func commonInterval(a0, a1, b0, b1 int) int64 {
 	if a1 <= b0 || b1 <= a0 {
 		return 0
 	}
@@ -230,7 +233,7 @@ func commonInterval(a0, a1, b0, b1 int) int {
 	end := min(a1, b1)
 	start := max(a0, b0)
 
-	return end - start
+	return int64(end) - int64(start)
 }
 
 // splitFree splits one free rectangle around used rectangle if they overlap.
