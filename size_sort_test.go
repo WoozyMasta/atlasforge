@@ -92,6 +92,14 @@ func TestCandidateScoreAvoidsNonFiniteResults(t *testing.T) {
 	}
 }
 
+func TestCandidateScoreSaturatesOverflow(t *testing.T) {
+	t.Parallel()
+
+	if got := candidateScore(2, 1, math.MaxFloat64); got != math.MaxFloat64 {
+		t.Fatalf("candidateScore with MaxFloat64 penalty = %g, want MaxFloat64", got)
+	}
+}
+
 func TestCandidateSizesNearMaxIntTerminate(t *testing.T) {
 	t.Parallel()
 

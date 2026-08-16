@@ -171,6 +171,7 @@ func candidateScore(w, h int, aspectPenalty float64) float64 {
 	aspect := float64(max(w, h)) / float64(min(w, h))
 	score := (float64(w) * float64(h)) * (1.0 + aspectPenalty*(aspect-1.0))
 	if math.IsNaN(score) || math.IsInf(score, 0) {
+		// Scores outside float range saturate; ties use the standard deterministic policy.
 		return math.MaxFloat64
 	}
 

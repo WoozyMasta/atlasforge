@@ -6,6 +6,7 @@ package atlasforge
 
 import (
 	"fmt"
+	"math"
 )
 
 // Plan computes deterministic atlas placements without rendering image data.
@@ -100,6 +101,14 @@ func validateOptions(opts Options) error {
 	}
 	if opts.Padding < 0 {
 		return fmt.Errorf("%w: Padding=%d", ErrInvalidOptions, opts.Padding)
+	}
+
+	if math.IsNaN(opts.AspectPenalty) || math.IsInf(opts.AspectPenalty, 0) || opts.AspectPenalty < 0 {
+		return fmt.Errorf(
+			"%w: AspectPenalty must be finite and non-negative: %g",
+			ErrInvalidOptions,
+			opts.AspectPenalty,
+		)
 	}
 
 	return nil

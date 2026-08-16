@@ -7,6 +7,7 @@ package atlasforge
 import (
 	"errors"
 	"image"
+	"math"
 	"testing"
 )
 
@@ -60,6 +61,68 @@ func TestPlanValidateOptions(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestPlanValidatesAspectPenalty(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{{ID: "a", Width: 8, Height: 8}}
+	tests := []struct {
+		name      string
+		penalty   float64
+		heuristic Heuristic
+		wantErr   bool
+	}{
+		{name: "NaN", penalty: math.NaN(), wantErr: true},
+		{name: "positive infinity", penalty: math.Inf(1), wantErr: true},
+		{name: "negative infinity", penalty: math.Inf(-1), wantErr: true},
+		{name: "negative", penalty: -0.01, wantErr: true},
+		{name: "FirstFit NaN", penalty: math.NaN(), heuristic: HeuristicFirstFit, wantErr: true},
+		{name: "zero", penalty: 0},
+		{name: "negative zero", penalty: math.Copysign(0, -1)},
+		{name: "default-like", penalty: 0.25},
+		{name: "large finite", penalty: 100},
+		{name: "maximum finite", penalty: math.MaxFloat64},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Plan(items, Options{
+				MinSize:       16,
+				MaxSize:       32,
+				AspectPenalty: test.penalty,
+				Heuristic:     test.heuristic,
+			})
+			if test.wantErr {
+				if !errors.Is(err, ErrInvalidOptions) {
+					t.Fatalf("error %v, want ErrInvalidOptions", err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+		})
+	}
+}
+
+func TestPlanMaximumAspectPenaltyKeepsFiniteSquareCandidate(t *testing.T) {
+	t.Parallel()
+
+	layout, err := Plan([]Item{{ID: "a", Width: 10, Height: 5}}, Options{
+		MinSize:       16,
+		MaxSize:       128,
+		AspectPenalty: math.MaxFloat64,
+	})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if layout.Width != 16 || layout.Height != 16 {
+		t.Fatalf("layout size = %dx%d, want 16x16", layout.Width, layout.Height)
 	}
 }
 
