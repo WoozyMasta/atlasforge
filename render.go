@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
+	"reflect"
 )
 
 // Render renders a precomputed layout using provided image sources.
@@ -24,6 +25,16 @@ func Render(layout *Layout, sources []Source) (image.Image, error) {
 	return renderValidatedWithSourceMap(layout, sourceMap)
 }
 
+// isNilImage detects nil interfaces and nil pointers stored in image.Image.
+func isNilImage(img image.Image) bool {
+	if img == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(img)
+	return value.Kind() == reflect.Pointer && value.IsNil()
+}
+
 // buildSourceMap validates sources and builds ID->image map.
 func buildSourceMap(sources []Source) (map[string]image.Image, error) {
 	sourceMap := make(map[string]image.Image, len(sources))
@@ -32,7 +43,7 @@ func buildSourceMap(sources []Source) (map[string]image.Image, error) {
 		if source.ID == "" {
 			return nil, fmt.Errorf("%w: empty source ID", ErrSourceNotFound)
 		}
-		if source.Image == nil {
+		if isNilImage(source.Image) {
 			return nil, fmt.Errorf("%w: ID=%q", ErrSourceImageMissing, source.ID)
 		}
 		if _, exists := sourceMap[source.ID]; exists {

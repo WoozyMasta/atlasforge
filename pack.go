@@ -41,7 +41,7 @@ func prepareSprites(sprites []Sprite) ([]Item, map[string]image.Image, error) {
 		if sprite.ID == "" {
 			return nil, nil, fmt.Errorf("%w: empty sprite ID", ErrInvalidItem)
 		}
-		if sprite.Image == nil {
+		if isNilImage(sprite.Image) {
 			return nil, nil, fmt.Errorf("%w: ID=%q", ErrSourceImageMissing, sprite.ID)
 		}
 		imageWidth := sprite.Image.Bounds().Dx()

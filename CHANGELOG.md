@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning][].
 
 ### Fixed
 
+* Reject typed-nil source images instead of panicking.
 * Reject invalid non-finite or negative aspect penalties.
 * Fix MaxRects best-area scoring for large free rectangles.
 * Reject overflowing atlas dimensions and padded area calculations.
