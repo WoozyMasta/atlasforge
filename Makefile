@@ -44,6 +44,7 @@ fuzz:
 	$(GO) test -run='^$$' -fuzz='^FuzzPlan$$' -fuzztime=$(FUZZ_TIME) .
 	$(GO) test -run='^$$' -fuzz='^FuzzRender$$' -fuzztime=$(FUZZ_TIME) .
 	$(GO) test -run='^$$' -fuzz='^FuzzPack$$' -fuzztime=$(FUZZ_TIME) .
+	$(GO) test -run='^$$' -fuzz='^FuzzMaxRects$$' -fuzztime=$(FUZZ_TIME) .
 
 .PHONY: download verify vet tidy tidy-check fmt fmt-check vulncheck lint lint-fix align align-fix
 
