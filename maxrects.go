@@ -310,13 +310,13 @@ func (m *maxRects) pruneFree() {
 			}
 
 			b := m.free[j]
-			if containedIn(a, b) {
+			if a.W <= b.W && a.H <= b.H && containedIn(a, b) {
 				marks[i] = true
 				anyMarked = true
 				break
 			}
 
-			if containedIn(b, a) {
+			if b.W <= a.W && b.H <= a.H && containedIn(b, a) {
 				marks[j] = true
 				anyMarked = true
 			}

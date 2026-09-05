@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning][].
 
 ### Changed
 
+* Reduce MaxRects free-space pruning overhead on large atlas plans.
 * Lowered the minimum Go version to 1.22.
 
 ### Fixed
