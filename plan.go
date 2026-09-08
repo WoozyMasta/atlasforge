@@ -32,7 +32,7 @@ func Plan(items []Item, opts Options) (*Layout, error) {
 	copy(work, items)
 	sortItemsForPacking(work, opts)
 
-	width, height, found := findOptimalSize(work, opts)
+	width, height, used, found := findOptimalPlan(work, opts)
 	if !found {
 		return nil, fmt.Errorf(
 			"%w: no atlas candidate fits within MinSize=%d MaxSize=%d",
@@ -42,24 +42,9 @@ func Plan(items []Item, opts Options) (*Layout, error) {
 		)
 	}
 
-	bin := newMaxRects(width, height, opts.AllowRotate)
 	placements := make([]Placement, 0, len(work))
-	heuristic := normalizeHeuristic(opts.Heuristic)
-
-	for _, item := range work {
-		pw := item.Width + 2*opts.Padding
-		ph := item.Height + 2*opts.Padding
-
-		rect, ok := bin.Insert(pw, ph, heuristic)
-		if !ok {
-			return nil, fmt.Errorf(
-				"%w: item %q cannot fit into %dx%d",
-				ErrPlacementFailed,
-				item.ID,
-				width,
-				height,
-			)
-		}
+	for i, item := range work {
+		rect := used[i]
 
 		x := rect.X + opts.Padding
 		y := rect.Y + opts.Padding

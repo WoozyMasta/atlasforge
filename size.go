@@ -10,6 +10,13 @@ import (
 
 // findOptimalSize searches candidate atlas sizes after Plan validates arithmetic bounds.
 func findOptimalSize(items []Item, opts Options) (width, height int, found bool) {
+	width, height, _, found = findOptimalPlan(items, opts)
+
+	return width, height, found
+}
+
+// findOptimalPlan returns the selected size and its validated MaxRects placements.
+func findOptimalPlan(items []Item, opts Options) (width, height int, placements []mrRect, found bool) {
 	minW, minH := opts.MinSize, opts.MinSize
 	totalArea := 0
 	for _, item := range items {
@@ -32,9 +39,10 @@ func findOptimalSize(items []Item, opts Options) (width, height int, found bool)
 	bestScore := math.MaxFloat64
 	heuristic := normalizeHeuristic(opts.Heuristic)
 	if heuristic == HeuristicFirstFit {
-		return findFirstFitSize(items, opts, sizes, minW, minH, totalArea)
+		return findFirstFitPlan(items, opts, sizes, minW, minH, totalArea)
 	}
 
+	var bestPlacements []mrRect
 	try := func(w, h int) {
 		if w < minW || h < minH {
 			return
@@ -56,19 +64,21 @@ func findOptimalSize(items []Item, opts Options) (width, height int, found bool)
 			return
 		}
 
-		if !canFitMaxRects(items, w, h, opts, heuristic) {
+		candidatePlacements, canFit := tryMaxRects(items, w, h, opts, heuristic)
+		if !canFit {
 			return
 		}
 
 		bestScore = score
 		bestW, bestH = w, h
+		bestPlacements = candidatePlacements
 	}
 
 	if opts.ForceSquare {
 		for _, s := range sizes {
 			try(s, s)
 		}
-		return bestW, bestH, bestW > 0
+		return bestW, bestH, bestPlacements, bestW > 0
 	}
 
 	if opts.PreferHeight {
@@ -85,66 +95,66 @@ func findOptimalSize(items []Item, opts Options) (width, height int, found bool)
 		}
 	}
 
-	return bestW, bestH, bestW > 0
+	return bestW, bestH, bestPlacements, bestW > 0
 }
 
-// findFirstFitSize picks the first valid candidate in the established iteration order.
-func findFirstFitSize(
+// findFirstFitPlan returns placements for the first fitting candidate in iteration order.
+func findFirstFitPlan(
 	items []Item,
 	opts Options,
 	sizes []int,
 	minW, minH int,
 	totalArea int,
-) (int, int, bool) {
-	try := func(w, h int) bool {
+) (int, int, []mrRect, bool) {
+	try := func(w, h int) ([]mrRect, bool) {
 		if w < minW || h < minH {
-			return false
+			return nil, false
 		}
 
 		if opts.ForceSquare {
 			if w != h {
-				return false
+				return nil, false
 			}
 		} else if absPowerDiff(w, h) > 1 {
-			return false
+			return nil, false
 		}
 		if totalArea > w*h {
-			return false
+			return nil, false
 		}
 
-		return canFitMaxRects(items, w, h, opts, HeuristicFirstFit)
+		return tryMaxRects(items, w, h, opts, HeuristicFirstFit)
 	}
 
 	// FirstFit deliberately ignores AspectPenalty and returns the first fitting size.
 	if opts.ForceSquare {
 		for _, s := range sizes {
-			if try(s, s) {
-				return s, s, true
+			if placements, ok := try(s, s); ok {
+				return s, s, placements, true
 			}
 		}
 
-		return 0, 0, false
+		return 0, 0, nil, false
 	}
 
 	if opts.PreferHeight {
 		for _, w := range sizes {
 			for _, h := range sizes {
-				if try(w, h) {
-					return w, h, true
+				if placements, ok := try(w, h); ok {
+					return w, h, placements, true
 				}
 			}
 		}
 	} else {
 		for _, h := range sizes {
 			for _, w := range sizes {
-				if try(w, h) {
-					return w, h, true
+				if placements, ok := try(w, h); ok {
+					return w, h, placements, true
 				}
 			}
 		}
 	}
 
-	return 0, 0, false
+	return 0, 0, nil, false
 }
 
 // candidateSizes builds the deterministic MinSize doubling ladder through MaxSize.
@@ -222,17 +232,17 @@ func isBetterTie(w, h, otherW, otherH int, preferHeight bool) bool {
 	return h > otherH
 }
 
-// canFitMaxRects dry-runs placement for all items.
-func canFitMaxRects(items []Item, w, h int, opts Options, heuristic Heuristic) bool {
+// tryMaxRects tests candidate feasibility and returns its placement state.
+func tryMaxRects(items []Item, w, h int, opts Options, heuristic Heuristic) ([]mrRect, bool) {
 	bin := newMaxRects(w, h, opts.AllowRotate)
 	for _, item := range items {
 		pw := item.Width + 2*opts.Padding
 		ph := item.Height + 2*opts.Padding
 
 		if _, ok := bin.Insert(pw, ph, heuristic); !ok {
-			return false
+			return nil, false
 		}
 	}
 
-	return true
+	return bin.used, true
 }
