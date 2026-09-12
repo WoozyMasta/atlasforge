@@ -5,6 +5,7 @@
 package atlasforge
 
 import (
+	"bytes"
 	"errors"
 	"image"
 	"image/color"
@@ -158,6 +159,99 @@ func TestRenderRotatedSubImagePreservesSourceBounds(t *testing.T) {
 	}
 	if pixel := rgba.RGBAAt(0, 1); pixel != (color.RGBA{G: 255, A: 255}) {
 		t.Fatalf("bottom rotated pixel = %+v, want opaque green", pixel)
+	}
+}
+
+func TestRenderRotatedRGBAFastPathMatchesPixelBytes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		make func() *image.RGBA
+	}{
+		{
+			name: "one pixel",
+			make: func() *image.RGBA {
+				return image.NewRGBA(image.Rect(-4, 7, -3, 8))
+			},
+		},
+		{
+			name: "one column",
+			make: func() *image.RGBA {
+				return image.NewRGBA(image.Rect(3, -5, 4, 0))
+			},
+		},
+		{
+			name: "one row",
+			make: func() *image.RGBA {
+				return image.NewRGBA(image.Rect(-6, 2, -1, 3))
+			},
+		},
+		{
+			name: "small rectangle",
+			make: func() *image.RGBA {
+				return image.NewRGBA(image.Rect(-3, 5, -1, 8))
+			},
+		},
+		{
+			name: "larger rectangle",
+			make: func() *image.RGBA {
+				return image.NewRGBA(image.Rect(9, -11, 25, 5))
+			},
+		},
+		{
+			name: "subimage with parent stride",
+			make: func() *image.RGBA {
+				parent := image.NewRGBA(image.Rect(-10, 20, 20, 50))
+
+				return parent.SubImage(image.Rect(-5, 24, 5, 30)).(*image.RGBA)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			src := test.make()
+			bounds := src.Bounds()
+			for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+				for x := bounds.Min.X; x < bounds.Max.X; x++ {
+					a := byte(((x-bounds.Min.X)*29 + (y-bounds.Min.Y)*47) & 0xff)
+					src.SetRGBA(x, y, color.RGBA{R: a / 2, G: a / 3, B: a / 4, A: a})
+				}
+			}
+
+			layout := &Layout{
+				Width:  bounds.Dy(),
+				Height: bounds.Dx(),
+				Placements: []Placement{{
+					ID:      "sprite",
+					Width:   bounds.Dx(),
+					Height:  bounds.Dy(),
+					Rotated: true,
+				}},
+			}
+			gotImage, err := Render(layout, []Source{{ID: "sprite", Image: src}})
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			got, ok := gotImage.(*image.RGBA)
+			if !ok {
+				t.Fatalf("Render type = %T, want *image.RGBA", gotImage)
+			}
+
+			want := image.NewRGBA(image.Rect(0, 0, bounds.Dy(), bounds.Dx()))
+			for sy := 0; sy < bounds.Dy(); sy++ {
+				for sx := 0; sx < bounds.Dx(); sx++ {
+					want.SetRGBA(bounds.Dy()-1-sy, sx, src.RGBAAt(bounds.Min.X+sx, bounds.Min.Y+sy))
+				}
+			}
+
+			if !bytes.Equal(got.Pix, want.Pix) {
+				t.Fatalf("rendered pixel bytes differ from clockwise RGBA reference")
+			}
+		})
 	}
 }
 

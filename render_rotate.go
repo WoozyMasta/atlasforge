@@ -17,12 +17,42 @@ type rgbaAtImage interface {
 
 // drawRotated90Into draws src rotated 90 degrees clockwise directly into dst.
 func drawRotated90Into(dst *image.RGBA, dstX, dstY int, src image.Image, srcW, srcH int) {
+	if rgba, ok := src.(*image.RGBA); ok {
+		drawRotated90RGBA(dst, dstX, dstY, rgba, srcW, srcH)
+		return
+	}
+
 	if fast, ok := src.(rgbaAtImage); ok {
 		drawRotated90RGBAAt(dst, dstX, dstY, fast, srcW, srcH)
 		return
 	}
 
 	drawRotated90Generic(dst, dstX, dstY, src, srcW, srcH)
+}
+
+// drawRotated90RGBA copies raw RGBA pixels using source and destination strides.
+func drawRotated90RGBA(dst *image.RGBA, dstX, dstY int, src *image.RGBA, srcW, srcH int) {
+	srcStride := src.Stride
+	srcPix := src.Pix
+	dstMin := dst.Rect.Min
+	dstStride := dst.Stride
+	dstPix := dst.Pix
+
+	for sy := range srcH {
+		srcRowOffset := sy * srcStride
+		dstXPos := dstX + srcH - 1 - sy
+		dstColOffset := (dstXPos - dstMin.X) * 4
+
+		for sx := range srcW {
+			si := srcRowOffset + sx*4
+			dstYPos := dstY + sx
+			di := (dstYPos-dstMin.Y)*dstStride + dstColOffset
+			dstPix[di+0] = srcPix[si+0]
+			dstPix[di+1] = srcPix[si+1]
+			dstPix[di+2] = srcPix[si+2]
+			dstPix[di+3] = srcPix[si+3]
+		}
+	}
 }
 
 // drawRotated90RGBAAt draws rotated data using fast RGBAAt access.

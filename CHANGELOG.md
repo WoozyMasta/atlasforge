@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning][].
 
 ### Changed
 
+* Speed up clockwise RGBA sprite rotation while preserving source bounds.
 * Reduce redundant atlas size feasibility checks during planning.
 * Reduce MaxRects free-space pruning overhead on large atlas plans.
 * Lowered the minimum Go version to 1.22.
