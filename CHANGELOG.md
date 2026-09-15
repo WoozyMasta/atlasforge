@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning][].
 
 ## Unreleased
 
+### Added
+
+* Optional edge extrusion into reserved sprite padding.
+
 ### Changed
 
 * Speed up clockwise RGBA sprite rotation while preserving source bounds.

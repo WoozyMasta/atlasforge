@@ -25,6 +25,7 @@ func Plan(items []Item, opts Options) (*Layout, error) {
 			Width:      opts.MinSize,
 			Height:     opts.MinSize,
 			Placements: nil,
+			Render:     renderSettingsForOptions(opts),
 		}, nil
 	}
 
@@ -62,7 +63,20 @@ func Plan(items []Item, opts Options) (*Layout, error) {
 		Width:      width,
 		Height:     height,
 		Placements: placements,
+		Render:     renderSettingsForOptions(opts),
 	}, nil
+}
+
+// renderSettingsForOptions records settings only when rendering needs them.
+func renderSettingsForOptions(opts Options) *RenderSettings {
+	if opts.Extrude == 0 {
+		return nil
+	}
+
+	return &RenderSettings{
+		Padding: opts.Padding,
+		Extrude: opts.Extrude,
+	}
 }
 
 // validateOptions validates packing options.
@@ -86,6 +100,9 @@ func validateOptions(opts Options) error {
 	}
 	if opts.Padding < 0 {
 		return fmt.Errorf("%w: Padding=%d", ErrInvalidOptions, opts.Padding)
+	}
+	if opts.Extrude < 0 || opts.Extrude > opts.Padding {
+		return fmt.Errorf("%w: Extrude=%d Padding=%d", ErrInvalidOptions, opts.Extrude, opts.Padding)
 	}
 
 	if math.IsNaN(opts.AspectPenalty) || math.IsInf(opts.AspectPenalty, 0) || opts.AspectPenalty < 0 {

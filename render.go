@@ -72,6 +72,10 @@ func renderValidatedWithSourceMap(layout *Layout, sourceMap map[string]image.Ima
 	}
 
 	atlas := image.NewRGBA(image.Rect(0, 0, layout.Width, layout.Height))
+	extrude := 0
+	if layout.Render != nil {
+		extrude = layout.Render.Extrude
+	}
 
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
@@ -82,19 +86,60 @@ func renderValidatedWithSourceMap(layout *Layout, sourceMap map[string]image.Ima
 
 		if placement.Rotated {
 			drawRotated90Into(atlas, x, y, src, placement.Width, placement.Height)
-			continue
+		} else {
+			draw.Draw(
+				atlas,
+				image.Rect(x, y, x+placement.Width, y+placement.Height),
+				src,
+				src.Bounds().Min,
+				draw.Src,
+			)
 		}
 
-		draw.Draw(
-			atlas,
-			image.Rect(x, y, x+placement.Width, y+placement.Height),
-			src,
-			src.Bounds().Min,
-			draw.Src,
-		)
+		if extrude > 0 {
+			width := placement.Width
+			height := placement.Height
+			if placement.Rotated {
+				width, height = height, width
+			}
+
+			extrudeRGBA(atlas, x, y, width, height, extrude)
+		}
 	}
 
 	return atlas, nil
+}
+
+// extrudeRGBA copies each edge pixel into a bounded RGBA margin around content.
+func extrudeRGBA(atlas *image.RGBA, x, y, width, height, depth int) {
+	stride := atlas.Stride
+	pixels := atlas.Pix
+
+	for dy := -depth; dy < height+depth; dy++ {
+		for dx := -depth; dx < width+depth; dx++ {
+			if dx >= 0 && dx < width && dy >= 0 && dy < height {
+				continue
+			}
+
+			sourceX := dx
+			if sourceX < 0 {
+				sourceX = 0
+			} else if sourceX >= width {
+				sourceX = width - 1
+			}
+
+			sourceY := dy
+			if sourceY < 0 {
+				sourceY = 0
+			} else if sourceY >= height {
+				sourceY = height - 1
+			}
+
+			sourceOffset := (y+sourceY)*stride + (x+sourceX)*4
+			destinationOffset := (y+dy)*stride + (x+dx)*4
+			copy(pixels[destinationOffset:destinationOffset+4], pixels[sourceOffset:sourceOffset+4])
+		}
+	}
 }
 
 // validateLayout validates atlas dimensions and placement geometry for rendering.
@@ -102,12 +147,25 @@ func validateLayout(layout *Layout) error {
 	if layout == nil {
 		return ErrLayoutRequired
 	}
+
 	if layout.Width <= 0 || layout.Height <= 0 {
 		return fmt.Errorf(
 			"%w: Width=%d Height=%d",
 			ErrInvalidLayout,
 			layout.Width,
 			layout.Height,
+		)
+	}
+
+	if layout.Render != nil &&
+		(layout.Render.Padding < 0 ||
+			layout.Render.Extrude < 0 ||
+			layout.Render.Extrude > layout.Render.Padding) {
+		return fmt.Errorf(
+			"%w: render settings require 0 <= Extrude <= Padding, got Extrude=%d Padding=%d",
+			ErrInvalidLayout,
+			layout.Render.Extrude,
+			layout.Render.Padding,
 		)
 	}
 
@@ -153,6 +211,38 @@ func validateLayout(layout *Layout) error {
 				placement.Width,
 				placement.Height,
 				placement.Rotated,
+			)
+		}
+	}
+
+	if layout.Render != nil && layout.Render.Extrude > 0 {
+		if err := validateExtrusionBounds(layout); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateExtrusionBounds ensures all reserved margins fit inside the atlas.
+func validateExtrusionBounds(layout *Layout) error {
+	padding := layout.Render.Padding
+	for i := range layout.Placements {
+		placement := layout.Placements[i]
+		width, height := placement.Width, placement.Height
+		if placement.Rotated {
+			width, height = height, width
+		}
+
+		if padding > placement.X ||
+			padding > placement.Y ||
+			padding > layout.Width-placement.X-width ||
+			padding > layout.Height-placement.Y-height {
+			return fmt.Errorf(
+				"%w: placement padding exceeds atlas bounds: ID=%q Padding=%d",
+				ErrInvalidLayout,
+				placement.ID,
+				padding,
 			)
 		}
 	}

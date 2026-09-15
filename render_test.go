@@ -6,7 +6,9 @@ package atlasforge
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"testing"
@@ -417,6 +419,275 @@ func TestRenderValidatesAllPlacementsBeforeDrawing(t *testing.T) {
 	if got != nil {
 		t.Fatalf("image %v, want nil", got)
 	}
+}
+
+func TestRenderExtrudesNearestPixels(t *testing.T) {
+	t.Parallel()
+
+	inputs := makeRenderExtrusionTestInputs()
+
+	for _, input := range inputs {
+		t.Run(input.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, rotated := range []bool{false, true} {
+				for _, depth := range []int{1, 2} {
+					name := fmt.Sprintf("rotated=%t/depth=%d", rotated, depth)
+					t.Run(name, func(t *testing.T) {
+						t.Parallel()
+
+						placement := Placement{ID: "sprite", X: 3, Y: 3, Width: 2, Height: 3, Rotated: rotated}
+						baseLayout := Layout{
+							Width:      8,
+							Height:     9,
+							Placements: []Placement{placement},
+						}
+						baseImage, err := Render(&baseLayout, []Source{{ID: "sprite", Image: input.image}})
+						if err != nil {
+							t.Fatalf("Render without extrusion: %v", err)
+						}
+
+						extrudedLayout := baseLayout
+						extrudedLayout.Render = &RenderSettings{Padding: 2, Extrude: depth}
+						gotImage, err := Render(&extrudedLayout, []Source{{ID: "sprite", Image: input.image}})
+						if err != nil {
+							t.Fatalf("Render with extrusion: %v", err)
+						}
+
+						base := baseImage.(*image.RGBA)
+						got := gotImage.(*image.RGBA)
+						width, height := placement.Width, placement.Height
+						if rotated {
+							width, height = height, width
+						}
+
+						for dy := -depth; dy < height+depth; dy++ {
+							for dx := -depth; dx < width+depth; dx++ {
+								clampedX := min(max(dx, 0), width-1)
+								clampedY := min(max(dy, 0), height-1)
+								want := base.RGBAAt(placement.X+clampedX, placement.Y+clampedY)
+								if pixel := got.RGBAAt(placement.X+dx, placement.Y+dy); pixel != want {
+									t.Errorf("pixel at (%d,%d) = %+v, want %+v", placement.X+dx, placement.Y+dy, pixel, want)
+								}
+							}
+						}
+
+						for y := 0; y < extrudedLayout.Height; y++ {
+							for x := 0; x < extrudedLayout.Width; x++ {
+								insideExtrusion := x >= placement.X-depth && x < placement.X+width+depth &&
+									y >= placement.Y-depth && y < placement.Y+height+depth
+								if !insideExtrusion && got.RGBAAt(x, y) != (color.RGBA{}) {
+									t.Errorf("pixel outside extrusion at (%d,%d) = %+v, want transparent", x, y, got.RGBAAt(x, y))
+								}
+							}
+						}
+					})
+				}
+			}
+		})
+	}
+}
+
+func TestRenderRejectsInvalidExtrusionSettings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		layout Layout
+	}{
+		{
+			name: "negative padding",
+			layout: Layout{
+				Width:  4,
+				Height: 4,
+				Render: &RenderSettings{Padding: -1},
+			},
+		},
+		{
+			name: "negative extrusion",
+			layout: Layout{
+				Width:  4,
+				Height: 4,
+				Render: &RenderSettings{Padding: 1, Extrude: -1},
+			},
+		},
+		{
+			name: "extrusion exceeds padding",
+			layout: Layout{
+				Width:  4,
+				Height: 4,
+				Render: &RenderSettings{Padding: 1, Extrude: 2},
+			},
+		},
+		{
+			name: "reserved padding outside atlas",
+			layout: Layout{
+				Width:      4,
+				Height:     4,
+				Placements: []Placement{{ID: "sprite", Width: 1, Height: 1}},
+				Render:     &RenderSettings{Padding: 1, Extrude: 1},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := Render(&test.layout, nil)
+			if !errors.Is(err, ErrInvalidLayout) {
+				t.Fatalf("error %v, want ErrInvalidLayout", err)
+			}
+			if got != nil {
+				t.Fatalf("image %v, want nil", got)
+			}
+		})
+	}
+}
+
+func TestRenderExtrusionJSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	source := image.NewRGBA(image.Rect(-2, 5, 0, 8))
+	for y := source.Bounds().Min.Y; y < source.Bounds().Max.Y; y++ {
+		for x := source.Bounds().Min.X; x < source.Bounds().Max.X; x++ {
+			source.SetRGBA(x, y, color.RGBA{
+				R: byte((20 + (x+2)*30) & 0xff),
+				G: byte((30 + (y-5)*20) & 0xff),
+				B: 10,
+				A: 255,
+			})
+		}
+	}
+
+	opts := Options{MinSize: 8, MaxSize: 16, Padding: 2, Extrude: 2}
+	layout, err := Plan([]Item{{ID: "sprite", Width: 2, Height: 3}}, opts)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	encoded, err := json.Marshal(layout)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var decoded Layout
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	got, err := Render(&decoded, []Source{{ID: "sprite", Image: source}})
+	if err != nil {
+		t.Fatalf("Render round-tripped layout: %v", err)
+	}
+
+	packed, err := Pack([]Sprite{{ID: "sprite", Image: source}}, opts)
+	if err != nil {
+		t.Fatalf("Pack: %v", err)
+	}
+	if packed.Layout.Render == nil || *packed.Layout.Render != *layout.Render {
+		t.Fatalf("Pack render settings = %+v, want %+v", packed.Layout.Render, layout.Render)
+	}
+	if !bytes.Equal(got.(*image.RGBA).Pix, packed.Image.(*image.RGBA).Pix) {
+		t.Fatal("JSON round-trip render differs from Pack image")
+	}
+}
+
+func TestRenderExtrusionKeepsAdjacentSpritesDisjoint(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "red", Width: 3, Height: 2},
+		{ID: "green", Width: 3, Height: 2},
+	}
+	opts := Options{MinSize: 8, MaxSize: 32, Padding: 2, Extrude: 2}
+	layout, err := Plan(items, opts)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	redImage := image.NewRGBA(image.Rect(0, 0, 3, 2))
+	greenImage := image.NewRGBA(image.Rect(0, 0, 3, 2))
+	for y := range 2 {
+		for x := range 3 {
+			redImage.SetRGBA(x, y, color.RGBA{R: 255, A: 255})
+			greenImage.SetRGBA(x, y, color.RGBA{G: 255, A: 255})
+		}
+	}
+	sources := []Source{
+		{ID: "red", Image: redImage},
+		{ID: "green", Image: greenImage},
+	}
+	got, err := Render(layout, sources)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	atlas := got.(*image.RGBA)
+	reserved := make([]image.Rectangle, len(layout.Placements))
+
+	for i, placement := range layout.Placements {
+		width, height := placement.Width, placement.Height
+		if placement.Rotated {
+			width, height = height, width
+		}
+		reserved[i] = image.Rect(
+			placement.X-opts.Padding,
+			placement.Y-opts.Padding,
+			placement.X+width+opts.Padding,
+			placement.Y+height+opts.Padding,
+		)
+		want := color.RGBA{R: 255, A: 255}
+		if placement.ID == "green" {
+			want = color.RGBA{G: 255, A: 255}
+		}
+		for y := placement.Y; y < placement.Y+height; y++ {
+			for x := placement.X; x < placement.X+width; x++ {
+				if pixel := atlas.RGBAAt(x, y); pixel != want {
+					t.Fatalf("placement %q pixel at (%d,%d) = %+v, want %+v", placement.ID, x, y, pixel, want)
+				}
+			}
+		}
+	}
+
+	if reserved[0].Overlaps(reserved[1]) {
+		t.Fatalf("reserved regions overlap: %v and %v", reserved[0], reserved[1])
+	}
+}
+
+// makeRenderExtrusionTestInputs covers source storage and coordinate models.
+func makeRenderExtrusionTestInputs() []struct {
+	name  string
+	image image.Image
+} {
+	bounds := image.Rect(-3, 5, -1, 8)
+	rgba := image.NewRGBA(bounds)
+	nrgba := image.NewNRGBA(bounds)
+	parent := image.NewRGBA(image.Rect(-5, 3, 3, 11))
+	subimage := parent.SubImage(bounds).(*image.RGBA)
+	inputs := []struct {
+		name  string
+		image image.Image
+	}{
+		{name: "RGBA", image: rgba},
+		{name: "NRGBA with hidden transparent RGB", image: nrgba},
+		{name: "RGBA subimage with offset bounds", image: subimage},
+	}
+
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			alpha := byte((96 + (x-bounds.Min.X)*30 + (y-bounds.Min.Y)*20) & 0xff)
+			pixel := color.RGBA{R: alpha / 2, G: alpha / 3, B: alpha / 4, A: alpha}
+			rgba.SetRGBA(x, y, pixel)
+			subimage.SetRGBA(x, y, pixel)
+			nrgbaPixel := color.NRGBA{R: 210, G: 70, B: 25, A: alpha}
+			if x == bounds.Min.X && y == bounds.Min.Y {
+				nrgbaPixel.A = 0
+			}
+			nrgba.SetNRGBA(x, y, nrgbaPixel)
+		}
+	}
+
+	return inputs
 }
 
 func TestRenderDuplicateSourceID(t *testing.T) {

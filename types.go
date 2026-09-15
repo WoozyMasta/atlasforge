@@ -39,6 +39,10 @@ type Options struct {
 	// Higher values reduce packing density and increase atlas size.
 	Padding int `json:"padding" yaml:"padding"`
 
+	// Extrude copies edge pixels into the reserved padding around each item.
+	// It must be between zero and Padding.
+	Extrude int `json:"extrude,omitempty" yaml:"extrude,omitempty"`
+
 	// AspectPenalty adds a penalty for non-square atlas shapes.
 	// Use 0 to disable shape bias and prioritize fit only.
 	AspectPenalty float64 `json:"aspect_penalty" yaml:"aspect_penalty"`
@@ -90,6 +94,9 @@ type Atlas struct {
 
 // Layout contains atlas dimensions and all placements.
 type Layout struct {
+	// Render stores optional settings needed to reproduce rendered pixels.
+	Render *RenderSettings `json:"render,omitempty" yaml:"render,omitempty"`
+
 	// Placements contains one entry per input item.
 	// Order follows internal packing workflow, not input order guarantees.
 	Placements []Placement `json:"placements" yaml:"placements"`
@@ -99,6 +106,18 @@ type Layout struct {
 
 	// Height is the final atlas height in pixels.
 	Height int `json:"height" yaml:"height"`
+}
+
+// RenderSettings contains pixel operations recorded by Plan for Render.
+type RenderSettings struct {
+	// Padding is the reserved margin around placements.
+	Padding int `json:"padding,omitempty" yaml:"padding,omitempty"`
+
+	// Extrude is the number of edge-pixel layers copied into the padding.
+	Extrude int `json:"extrude,omitempty" yaml:"extrude,omitempty"`
+
+	// TrimTransparent records whether source bounds were trimmed.
+	TrimTransparent bool `json:"trim_transparent,omitempty" yaml:"trim_transparent,omitempty"`
 }
 
 // Placement describes final coordinates of one packed item.

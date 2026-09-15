@@ -5,6 +5,7 @@
 package atlasforge
 
 import (
+	"encoding/json"
 	"errors"
 	"image"
 	"math"
@@ -48,6 +49,35 @@ func TestPlanValidateOptions(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "negative-extrude",
+			opts: Options{
+				MinSize: 16,
+				MaxSize: 64,
+				Padding: 2,
+				Extrude: -1,
+			},
+			wantErr: true,
+		},
+		{
+			name: "extrude-exceeds-padding",
+			opts: Options{
+				MinSize: 16,
+				MaxSize: 64,
+				Padding: 2,
+				Extrude: 3,
+			},
+			wantErr: true,
+		},
+		{
+			name: "extrude-without-padding",
+			opts: Options{
+				MinSize: 16,
+				MaxSize: 64,
+				Extrude: 1,
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -61,6 +91,56 @@ func TestPlanValidateOptions(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestPlanRecordsRenderSettingsForExtrusion(t *testing.T) {
+	t.Parallel()
+
+	baseOptions := Options{MinSize: 8, MaxSize: 32, Padding: 2}
+	items := []Item{{ID: "sprite", Width: 2, Height: 3}}
+
+	withoutExtrusion, err := Plan(items, baseOptions)
+	if err != nil {
+		t.Fatalf("Plan without extrusion: %v", err)
+	}
+	if withoutExtrusion.Render != nil {
+		t.Fatalf("Render settings without extrusion = %+v, want nil", withoutExtrusion.Render)
+	}
+
+	baseOptions.Extrude = 2
+	withExtrusion, err := Plan(items, baseOptions)
+	if err != nil {
+		t.Fatalf("Plan with extrusion: %v", err)
+	}
+	if withExtrusion.Render == nil || *withExtrusion.Render != (RenderSettings{Padding: 2, Extrude: 2}) {
+		t.Fatalf("Render settings = %+v, want padding=2/extrude=2", withExtrusion.Render)
+	}
+
+	empty, err := Plan(nil, baseOptions)
+	if err != nil {
+		t.Fatalf("Plan empty input with extrusion: %v", err)
+	}
+	if empty.Render == nil || *empty.Render != *withExtrusion.Render {
+		t.Fatalf("empty Plan render settings = %+v, want %+v", empty.Render, withExtrusion.Render)
+	}
+}
+
+func TestLayoutLegacyJSONOmitsRenderSettings(t *testing.T) {
+	t.Parallel()
+
+	layout := Layout{
+		Placements: []Placement{{ID: "sprite", Width: 2, Height: 3}},
+		Width:      8,
+		Height:     8,
+	}
+	got, err := json.Marshal(layout)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	want := `{"placements":[{"id":"sprite","x":0,"y":0,"width":2,"height":3,"rotated":false}],"width":8,"height":8}`
+	if string(got) != want {
+		t.Fatalf("JSON = %s, want %s", got, want)
 	}
 }
 
