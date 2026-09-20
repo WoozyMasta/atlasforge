@@ -6,9 +6,94 @@ package atlasforge
 
 import (
 	"math"
+	"reflect"
 	"strconv"
 	"testing"
 )
+
+func TestPackIntoBinContinuesAfterAnItemDoesNotFit(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "too-wide", Width: 11, Height: 2},
+		{ID: "fits", Width: 4, Height: 4},
+		{ID: "too-tall", Width: 2, Height: 11},
+	}
+	wantItems := append([]Item(nil), items...)
+
+	placements, remaining := packIntoBin(
+		items,
+		10,
+		10,
+		Options{},
+		HeuristicBestShortSideFit,
+		true,
+	)
+	if len(placements) != 1 || placements[0] != (mrRect{X: 0, Y: 0, W: 4, H: 4}) {
+		t.Fatalf("placements = %+v, want one 4x4 placement at origin", placements)
+	}
+	if !reflect.DeepEqual(remaining, []Item{items[0], items[2]}) {
+		t.Fatalf("remaining = %+v, want [%q %q]", remaining, items[0].ID, items[2].ID)
+	}
+	if !reflect.DeepEqual(items, wantItems) {
+		t.Fatalf("input items mutated: got %+v, want %+v", items, wantItems)
+	}
+}
+
+func TestPackIntoBinHandlesEmptySingleAndRotatedItems(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+
+		placements, remaining := packIntoBin(nil, 8, 8, Options{}, HeuristicBestShortSideFit, true)
+		if len(placements) != 0 || len(remaining) != 0 {
+			t.Fatalf("empty result = placements %v, remaining %v", placements, remaining)
+		}
+	})
+
+	t.Run("single rotated item", func(t *testing.T) {
+		t.Parallel()
+
+		placements, remaining := packIntoBin(
+			[]Item{{ID: "rotated", Width: 7, Height: 4}},
+			4,
+			8,
+			Options{AllowRotate: true},
+			HeuristicBestShortSideFit,
+			true,
+		)
+		if len(remaining) != 0 {
+			t.Fatalf("remaining = %+v, want none", remaining)
+		}
+		if len(placements) != 1 || placements[0] != (mrRect{X: 0, Y: 0, W: 4, H: 7, Rotated: true}) {
+			t.Fatalf("placements = %+v, want one rotated 4x7 placement", placements)
+		}
+	})
+}
+
+func TestPackIntoBinStopsAtFirstFailureWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "too-wide", Width: 11, Height: 2},
+		{ID: "fits", Width: 4, Height: 4},
+	}
+	placements, remaining := packIntoBin(
+		items,
+		10,
+		10,
+		Options{},
+		HeuristicBestShortSideFit,
+		false,
+	)
+	if len(placements) != 0 {
+		t.Fatalf("placements = %+v, want none", placements)
+	}
+	if len(remaining) != len(items) || &remaining[0] != &items[0] {
+		t.Fatalf("remaining = %+v, want original input suffix", remaining)
+	}
+}
 
 func TestPlanSearchesIndependentSizeCandidates(t *testing.T) {
 	t.Parallel()

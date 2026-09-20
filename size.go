@@ -64,8 +64,8 @@ func findOptimalPlan(items []Item, opts Options) (width, height int, placements 
 			return
 		}
 
-		candidatePlacements, canFit := tryMaxRects(items, w, h, opts, heuristic)
-		if !canFit {
+		candidatePlacements, remaining := packIntoBin(items, w, h, opts, heuristic, false)
+		if len(remaining) != 0 {
 			return
 		}
 
@@ -122,7 +122,12 @@ func findFirstFitPlan(
 			return nil, false
 		}
 
-		return tryMaxRects(items, w, h, opts, HeuristicFirstFit)
+		placements, remaining := packIntoBin(items, w, h, opts, HeuristicFirstFit, false)
+		if len(remaining) != 0 {
+			return nil, false
+		}
+
+		return placements, true
 	}
 
 	// FirstFit deliberately ignores AspectPenalty and returns the first fitting size.
@@ -232,17 +237,31 @@ func isBetterTie(w, h, otherW, otherH int, preferHeight bool) bool {
 	return h > otherH
 }
 
-// tryMaxRects tests candidate feasibility and returns its placement state.
-func tryMaxRects(items []Item, w, h int, opts Options, heuristic Heuristic) ([]mrRect, bool) {
+// packIntoBin inserts sorted items into one fixed bin
+// and returns placements plus items that did not fit.
+//
+// When continueAfterFailure is false,
+// remaining contains the first failed item and the untouched suffix.
+func packIntoBin(
+	items []Item,
+	w, h int,
+	opts Options,
+	heuristic Heuristic,
+	continueAfterFailure bool,
+) (placements []mrRect, remaining []Item) {
 	bin := newMaxRects(w, h, opts.AllowRotate)
-	for _, item := range items {
+	for i, item := range items {
 		pw := item.Width + 2*opts.Padding
 		ph := item.Height + 2*opts.Padding
 
 		if _, ok := bin.Insert(pw, ph, heuristic); !ok {
-			return nil, false
+			if !continueAfterFailure {
+				return bin.used, items[i:]
+			}
+
+			remaining = append(remaining, item)
 		}
 	}
 
-	return bin.used, true
+	return bin.used, remaining
 }

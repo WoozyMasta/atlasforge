@@ -5,6 +5,7 @@
 package atlasforge
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"image"
@@ -361,6 +362,97 @@ func TestPlanAllHeuristics(t *testing.T) {
 			}
 			if len(layout.Placements) != len(items) {
 				t.Fatalf("placements=%d, want %d", len(layout.Placements), len(items))
+			}
+		})
+	}
+}
+
+func TestPlanLayoutStableAcrossHeuristics(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "a", Width: 10, Height: 12},
+		{ID: "b", Width: 8, Height: 8},
+		{ID: "c", Width: 5, Height: 14},
+		{ID: "d", Width: 11, Height: 7},
+	}
+	want := map[Heuristic]string{
+		HeuristicBestShortSideFit: `{
+	"placements": [
+		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
+		{"id": "a", "x": 1, "y": 17, "width": 10, "height": 12, "rotated": false},
+		{"id": "d", "x": 8, "y": 1, "width": 11, "height": 7, "rotated": false},
+		{"id": "b", "x": 21, "y": 1, "width": 8, "height": 8, "rotated": false}
+	],
+	"width": 32,
+	"height": 32}`,
+		HeuristicBestLongSideFit: `{
+	"placements": [
+		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
+		{"id": "a", "x": 8, "y": 1, "width": 10, "height": 12, "rotated": false},
+		{"id": "d", "x": 8, "y": 15, "width": 11, "height": 7, "rotated": false},
+		{"id": "b", "x": 20, "y": 1, "width": 8, "height": 8, "rotated": false}
+	],
+	"width": 32,
+	"height": 32}`,
+		HeuristicBestAreaFit: `{
+	"placements": [
+		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
+		{"id": "a", "x": 1, "y": 17, "width": 10, "height": 12, "rotated": false},
+		{"id": "d", "x": 8, "y": 1, "width": 11, "height": 7, "rotated": false},
+		{"id": "b", "x": 21, "y": 1, "width": 8, "height": 8, "rotated": false}
+	],
+	"width": 32,
+	"height": 32}`,
+		HeuristicBottomLeft: `{
+	"placements": [
+		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
+		{"id": "a", "x": 8, "y": 1, "width": 10, "height": 12, "rotated": false},
+		{"id": "d", "x": 20, "y": 1, "width": 11, "height": 7, "rotated": false},
+		{"id": "b", "x": 20, "y": 10, "width": 8, "height": 8, "rotated": false}
+	],
+	"width": 32,
+	"height": 32}`,
+		HeuristicContactPoint: `{
+	"placements": [
+		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
+		{"id": "a", "x": 8, "y": 1, "width": 10, "height": 12, "rotated": false},
+		{"id": "d", "x": 20, "y": 1, "width": 11, "height": 7, "rotated": false},
+		{"id": "b", "x": 1, "y": 17, "width": 8, "height": 8, "rotated": false}
+	],
+	"width": 32,
+	"height": 32}`,
+		HeuristicFirstFit: `{
+	"placements": [
+		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
+		{"id": "a", "x": 8, "y": 1, "width": 10, "height": 12, "rotated": false},
+		{"id": "d", "x": 20, "y": 1, "width": 11, "height": 7, "rotated": false},
+		{"id": "b", "x": 20, "y": 10, "width": 8, "height": 8, "rotated": false}
+	],
+	"width": 32,
+	"height": 32}`,
+	}
+
+	for heuristic, expected := range want {
+		t.Run(heuristicName(heuristic), func(t *testing.T) {
+			t.Parallel()
+
+			layout, err := Plan(items, Options{
+				MinSize: 32, MaxSize: 64, Padding: 1, Heuristic: heuristic,
+			})
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			encoded, err := json.Marshal(layout)
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			var compactExpected bytes.Buffer
+			if err := json.Compact(&compactExpected, []byte(expected)); err != nil {
+				t.Fatalf("Compact expected fixture: %v", err)
+			}
+			if !bytes.Equal(encoded, compactExpected.Bytes()) {
+				t.Fatalf("layout JSON = %s, want %s", encoded, expected)
 			}
 		})
 	}

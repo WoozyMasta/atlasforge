@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning][].
 
 ### Changed
 
+* Share fixed-bin MaxRects insertion between single- and multi-page planning.
 * Speed up clockwise RGBA sprite rotation while preserving source bounds.
 * Reduce redundant atlas size feasibility checks during planning.
 * Reduce MaxRects free-space pruning overhead on large atlas plans.
