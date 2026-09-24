@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning][].
 ### Added
 
 * Optional edge extrusion into reserved sprite padding.
+* Multi-page planning and packing APIs.
 
 ### Changed
 

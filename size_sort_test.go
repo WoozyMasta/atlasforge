@@ -21,7 +21,7 @@ func TestPackIntoBinContinuesAfterAnItemDoesNotFit(t *testing.T) {
 	}
 	wantItems := append([]Item(nil), items...)
 
-	placements, remaining := packIntoBin(
+	placements, placed, remaining := packIntoBin(
 		items,
 		10,
 		10,
@@ -35,6 +35,9 @@ func TestPackIntoBinContinuesAfterAnItemDoesNotFit(t *testing.T) {
 	if !reflect.DeepEqual(remaining, []Item{items[0], items[2]}) {
 		t.Fatalf("remaining = %+v, want [%q %q]", remaining, items[0].ID, items[2].ID)
 	}
+	if !reflect.DeepEqual(placed, []Item{items[1]}) {
+		t.Fatalf("placed = %+v, want [%q]", placed, items[1].ID)
+	}
 	if !reflect.DeepEqual(items, wantItems) {
 		t.Fatalf("input items mutated: got %+v, want %+v", items, wantItems)
 	}
@@ -46,16 +49,21 @@ func TestPackIntoBinHandlesEmptySingleAndRotatedItems(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
 
-		placements, remaining := packIntoBin(nil, 8, 8, Options{}, HeuristicBestShortSideFit, true)
-		if len(placements) != 0 || len(remaining) != 0 {
-			t.Fatalf("empty result = placements %v, remaining %v", placements, remaining)
+		placements, placed, remaining := packIntoBin(
+			nil, 8, 8, Options{}, HeuristicBestShortSideFit, true,
+		)
+		if len(placements) != 0 || len(placed) != 0 || len(remaining) != 0 {
+			t.Fatalf(
+				"empty result = placements %v, placed %v, remaining %v",
+				placements, placed, remaining,
+			)
 		}
 	})
 
 	t.Run("single rotated item", func(t *testing.T) {
 		t.Parallel()
 
-		placements, remaining := packIntoBin(
+		placements, placed, remaining := packIntoBin(
 			[]Item{{ID: "rotated", Width: 7, Height: 4}},
 			4,
 			8,
@@ -63,8 +71,8 @@ func TestPackIntoBinHandlesEmptySingleAndRotatedItems(t *testing.T) {
 			HeuristicBestShortSideFit,
 			true,
 		)
-		if len(remaining) != 0 {
-			t.Fatalf("remaining = %+v, want none", remaining)
+		if len(remaining) != 0 || len(placed) != 1 || placed[0].ID != "rotated" {
+			t.Fatalf("placed = %+v, remaining = %+v; want one placed item", placed, remaining)
 		}
 		if len(placements) != 1 || placements[0] != (mrRect{X: 0, Y: 0, W: 4, H: 7, Rotated: true}) {
 			t.Fatalf("placements = %+v, want one rotated 4x7 placement", placements)
@@ -79,7 +87,7 @@ func TestPackIntoBinStopsAtFirstFailureWhenRequested(t *testing.T) {
 		{ID: "too-wide", Width: 11, Height: 2},
 		{ID: "fits", Width: 4, Height: 4},
 	}
-	placements, remaining := packIntoBin(
+	placements, placed, remaining := packIntoBin(
 		items,
 		10,
 		10,
@@ -89,6 +97,9 @@ func TestPackIntoBinStopsAtFirstFailureWhenRequested(t *testing.T) {
 	)
 	if len(placements) != 0 {
 		t.Fatalf("placements = %+v, want none", placements)
+	}
+	if len(placed) != 0 {
+		t.Fatalf("placed = %+v, want none", placed)
 	}
 	if len(remaining) != len(items) || &remaining[0] != &items[0] {
 		t.Fatalf("remaining = %+v, want original input suffix", remaining)

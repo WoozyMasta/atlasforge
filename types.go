@@ -27,11 +27,12 @@ type Sprite struct {
 // Options controls atlas planning behavior.
 type Options struct {
 	// MinSize is the lower bound for each atlas side candidate.
-	// Plan will not produce Width/Height below this value.
+	// Plan and compacted PlanPages layouts do not produce smaller dimensions.
 	MinSize int `json:"min_size" yaml:"min_size"`
 
 	// MaxSize is the upper bound for each atlas side candidate.
-	// Plan/Pack fail when items require a larger side.
+	// Plan/Pack fail when items require a larger side;
+	// page APIs fail only when an individual item cannot fit.
 	// Its square must fit in int for planner area calculations.
 	MaxSize int `json:"max_size" yaml:"max_size"`
 

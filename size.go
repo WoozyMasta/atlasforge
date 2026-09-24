@@ -64,7 +64,7 @@ func findOptimalPlan(items []Item, opts Options) (width, height int, placements 
 			return
 		}
 
-		candidatePlacements, remaining := packIntoBin(items, w, h, opts, heuristic, false)
+		candidatePlacements, _, remaining := packIntoBin(items, w, h, opts, heuristic, false)
 		if len(remaining) != 0 {
 			return
 		}
@@ -122,7 +122,7 @@ func findFirstFitPlan(
 			return nil, false
 		}
 
-		placements, remaining := packIntoBin(items, w, h, opts, HeuristicFirstFit, false)
+		placements, _, remaining := packIntoBin(items, w, h, opts, HeuristicFirstFit, false)
 		if len(remaining) != 0 {
 			return nil, false
 		}
@@ -237,31 +237,45 @@ func isBetterTie(w, h, otherW, otherH int, preferHeight bool) bool {
 	return h > otherH
 }
 
-// packIntoBin inserts sorted items into one fixed bin
-// and returns placements plus items that did not fit.
+// packIntoBin inserts sorted items into one fixed bin and returns placements,
+// successfully placed items, and items that did not fit.
 //
-// When continueAfterFailure is false,
-// remaining contains the first failed item and the untouched suffix.
+// When continueAfterFailure is false, placed is nil
+// and remaining contains the first failed item and the untouched suffix.
+// When true, insertion continues after failures
+// and placed contains the items matching placements.
 func packIntoBin(
 	items []Item,
 	w, h int,
 	opts Options,
 	heuristic Heuristic,
 	continueAfterFailure bool,
-) (placements []mrRect, remaining []Item) {
+) (placements []mrRect, placed []Item, remaining []Item) {
 	bin := newMaxRects(w, h, opts.AllowRotate)
-	for i, item := range items {
+
+	if !continueAfterFailure {
+		for i, item := range items {
+			pw := item.Width + 2*opts.Padding
+			ph := item.Height + 2*opts.Padding
+			if _, ok := bin.Insert(pw, ph, heuristic); !ok {
+				return bin.used, nil, items[i:]
+			}
+		}
+
+		return bin.used, nil, nil
+	}
+
+	for _, item := range items {
 		pw := item.Width + 2*opts.Padding
 		ph := item.Height + 2*opts.Padding
 
 		if _, ok := bin.Insert(pw, ph, heuristic); !ok {
-			if !continueAfterFailure {
-				return bin.used, items[i:]
-			}
-
 			remaining = append(remaining, item)
+			continue
 		}
+
+		placed = append(placed, item)
 	}
 
-	return bin.used, remaining
+	return bin.used, placed, remaining
 }

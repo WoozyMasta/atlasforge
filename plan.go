@@ -145,6 +145,16 @@ func validateItems(items []Item) error {
 
 // validateFitBounds performs cheap pre-checks before heuristic search.
 func validateFitBounds(items []Item, opts Options) error {
+	return validateFitBoundsMode(items, opts, true)
+}
+
+// validatePageFitBounds checks per-item bounds without limiting total area.
+func validatePageFitBounds(items []Item, opts Options) error {
+	return validateFitBoundsMode(items, opts, false)
+}
+
+// validateFitBoundsMode validates padded dimensions and optional single-page area.
+func validateFitBoundsMode(items []Item, opts Options, requireSinglePage bool) error {
 	maxAtlasArea := opts.MaxSize * opts.MaxSize
 	totalPaddedArea := 0
 
@@ -162,6 +172,7 @@ func validateFitBounds(items []Item, opts Options) error {
 		if !ok {
 			return fmt.Errorf("%w: padded height overflows int for item %q", ErrInvalidOptions, item.ID)
 		}
+
 		if paddedW > opts.MaxSize || paddedH > opts.MaxSize {
 			return fmt.Errorf(
 				"%w: item %q padded size %dx%d exceeds MaxSize=%d",
@@ -173,15 +184,17 @@ func validateFitBounds(items []Item, opts Options) error {
 			)
 		}
 
-		itemArea := paddedW * paddedH
-		if itemArea > maxAtlasArea-totalPaddedArea {
-			return fmt.Errorf(
-				"%w: total padded area exceeds max atlas area %d",
-				ErrInvalidOptions,
-				maxAtlasArea,
-			)
+		if requireSinglePage {
+			itemArea := paddedW * paddedH
+			if itemArea > maxAtlasArea-totalPaddedArea {
+				return fmt.Errorf(
+					"%w: total padded area exceeds max atlas area %d",
+					ErrInvalidOptions, maxAtlasArea,
+				)
+			}
+
+			totalPaddedArea += itemArea
 		}
-		totalPaddedArea += itemArea
 	}
 
 	return nil
