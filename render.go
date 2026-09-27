@@ -22,7 +22,24 @@ func Render(layout *Layout, sources []Source) (image.Image, error) {
 		return nil, err
 	}
 
-	return renderValidatedWithSourceMap(layout, sourceMap)
+	if err := validatePlacementSources(layout, sourceMap); err != nil {
+		return nil, err
+	}
+
+	return renderPrepared(layout, sourceMap, nil)
+}
+
+// RenderWithLoader renders a layout by loading each source immediately before drawing it.
+// Images are not cached; the loader should return a valid image on every call.
+func RenderWithLoader(layout *Layout, load ImageLoader) (image.Image, error) {
+	if load == nil {
+		return nil, ErrImageLoaderRequired
+	}
+	if err := validateLayout(layout); err != nil {
+		return nil, err
+	}
+
+	return renderPrepared(layout, nil, load)
 }
 
 // isNilImage detects nil interfaces and nil pointers stored in image.Image.
@@ -61,16 +78,15 @@ func renderWithSourceMap(layout *Layout, sourceMap map[string]image.Image) (imag
 	if err := validateLayout(layout); err != nil {
 		return nil, err
 	}
-
-	return renderValidatedWithSourceMap(layout, sourceMap)
-}
-
-// renderValidatedWithSourceMap renders a layout after its geometry is validated.
-func renderValidatedWithSourceMap(layout *Layout, sourceMap map[string]image.Image) (image.Image, error) {
 	if err := validatePlacementSources(layout, sourceMap); err != nil {
 		return nil, err
 	}
 
+	return renderPrepared(layout, sourceMap, nil)
+}
+
+// renderPrepared draws validated layout geometry using eager or lazy source access.
+func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load ImageLoader) (image.Image, error) {
 	atlas := image.NewRGBA(image.Rect(0, 0, layout.Width, layout.Height))
 	extrude := 0
 	if layout.Render != nil {
@@ -80,6 +96,19 @@ func renderValidatedWithSourceMap(layout *Layout, sourceMap map[string]image.Ima
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
 		src := sourceMap[placement.ID]
+		if load != nil {
+			var err error
+			src, err = load(placement.ID)
+			if err != nil {
+				return nil, fmt.Errorf("load source %q: %w", placement.ID, err)
+			}
+			if isNilImage(src) {
+				return nil, fmt.Errorf("%w: ID=%q", ErrSourceImageMissing, placement.ID)
+			}
+			if err := validatePlacementSource(placement, src); err != nil {
+				return nil, err
+			}
+		}
 
 		x := placement.X
 		y := placement.Y
@@ -259,19 +288,32 @@ func validatePlacementSources(layout *Layout, sourceMap map[string]image.Image) 
 			return fmt.Errorf("%w: ID=%q", ErrSourceNotFound, placement.ID)
 		}
 
-		sw := src.Bounds().Dx()
-		sh := src.Bounds().Dy()
-		if sw != placement.Width || sh != placement.Height {
-			return fmt.Errorf(
-				"%w: ID=%q source=%dx%d placement=%dx%d",
-				ErrSourceSizeMismatch,
-				placement.ID,
-				sw,
-				sh,
-				placement.Width,
-				placement.Height,
-			)
+		if err := validatePlacementSource(placement, src); err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+// validatePlacementSource checks one source image against its placement geometry.
+func validatePlacementSource(placement Placement, src image.Image) error {
+	if isNilImage(src) {
+		return fmt.Errorf("%w: ID=%q", ErrSourceImageMissing, placement.ID)
+	}
+
+	sw := src.Bounds().Dx()
+	sh := src.Bounds().Dy()
+	if sw != placement.Width || sh != placement.Height {
+		return fmt.Errorf(
+			"%w: ID=%q source=%dx%d placement=%dx%d",
+			ErrSourceSizeMismatch,
+			placement.ID,
+			sw,
+			sh,
+			placement.Width,
+			placement.Height,
+		)
 	}
 
 	return nil

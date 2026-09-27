@@ -39,3 +39,30 @@ func ExamplePack() {
 	// Output:
 	// 8x8 2
 }
+
+func ExampleRenderWithLoader() {
+	layout := &Layout{
+		Width:  2,
+		Height: 2,
+		Placements: []Placement{
+			{ID: "icon", Width: 2, Height: 2},
+		},
+	}
+
+	img, err := RenderWithLoader(layout, func(id string) (image.Image, error) {
+		if id != "icon" {
+			return nil, fmt.Errorf("unknown source %q", id)
+		}
+
+		return image.NewRGBA(image.Rect(0, 0, 2, 2)), nil
+	})
+	if err != nil {
+		fmt.Println("render error")
+		return
+	}
+
+	fmt.Printf("%dx%d\n", img.Bounds().Dx(), img.Bounds().Dy())
+
+	// Output:
+	// 2x2
+}

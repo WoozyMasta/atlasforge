@@ -30,4 +30,7 @@ var (
 
 	// ErrSourceSizeMismatch reports mismatch between placement size and source image size.
 	ErrSourceSizeMismatch = errors.New("source size mismatch")
+
+	// ErrImageLoaderRequired reports a missing lazy image loader.
+	ErrImageLoaderRequired = errors.New("image loader is required")
 )

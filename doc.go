@@ -15,6 +15,7 @@ The package offers planning, rendering, and one-shot APIs:
   - [Plan]: compute placement from items and options, returns Layout.
   - [PlanPages]: split items across multiple atlas layouts.
   - [Render]: draw a Layout with sources into an atlas image.
+  - [RenderWithLoader]: draw a Layout by loading each source on demand.
   - [Pack]: one-shot flow that plans from sprites and renders the atlas.
   - [PackPages]: one-shot flow that returns all rendered atlas pages.
 

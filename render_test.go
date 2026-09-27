@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"reflect"
 	"testing"
 )
 
@@ -20,6 +21,184 @@ func TestRenderRequiresLayout(t *testing.T) {
 	_, err := Render(nil, nil)
 	if !errors.Is(err, ErrLayoutRequired) {
 		t.Fatalf("error %v, want ErrLayoutRequired", err)
+	}
+}
+
+func TestRenderWithLoaderMatchesRenderAndLoadsInPlacementOrder(t *testing.T) {
+	t.Parallel()
+
+	layout := &Layout{
+		Width:  10,
+		Height: 10,
+		Render: &RenderSettings{Padding: 1, Extrude: 1},
+		Placements: []Placement{
+			{ID: "rgba", X: 1, Y: 1, Width: 2, Height: 3},
+			{ID: "nrgba", X: 5, Y: 1, Width: 3, Height: 2, Rotated: true},
+			{ID: "custom", X: 1, Y: 6, Width: 1, Height: 1},
+		},
+	}
+	newImage := func(id string) image.Image {
+		switch id {
+		case "rgba":
+			img := image.NewRGBA(image.Rect(-2, 3, 0, 6))
+			img.SetRGBA(-2, 3, color.RGBA{R: 255, A: 255})
+			img.SetRGBA(-1, 3, color.RGBA{G: 255, A: 255})
+			img.SetRGBA(-2, 4, color.RGBA{B: 255, A: 255})
+			img.SetRGBA(-1, 4, color.RGBA{R: 255, G: 255, A: 255})
+			img.SetRGBA(-2, 5, color.RGBA{R: 80, B: 255, A: 255})
+			img.SetRGBA(-1, 5, color.RGBA{G: 80, B: 255, A: 255})
+			return img
+
+		case "nrgba":
+			img := image.NewNRGBA(image.Rect(4, -1, 7, 1))
+			for y := -1; y < 1; y++ {
+				for x := 4; x < 7; x++ {
+					img.SetNRGBA(x, y, color.NRGBA{
+						R: uint8((x + 4) * 20), G: uint8((y + 3) * 30), B: 170, A: 255,
+					})
+				}
+			}
+			return img
+
+		case "custom":
+			return offsetTestImage{bounds: image.Rect(-1, -1, 0, 0)}
+
+		default:
+			t.Fatalf("unexpected source ID %q", id)
+			return nil
+		}
+	}
+
+	sources := make([]Source, 0, len(layout.Placements))
+	for _, placement := range layout.Placements {
+		sources = append(sources, Source{ID: placement.ID, Image: newImage(placement.ID)})
+	}
+
+	want, err := Render(layout, sources)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	var calls []string
+	got, err := RenderWithLoader(layout, func(id string) (image.Image, error) {
+		calls = append(calls, id)
+		return newImage(id), nil
+	})
+
+	if err != nil {
+		t.Fatalf("RenderWithLoader: %v", err)
+	}
+	if !reflect.DeepEqual(calls, []string{"rgba", "nrgba", "custom"}) {
+		t.Fatalf("loader calls = %v, want placements in order", calls)
+	}
+	if !bytes.Equal(got.(*image.RGBA).Pix, want.(*image.RGBA).Pix) {
+		t.Fatal("RenderWithLoader pixels differ from Render")
+	}
+}
+
+func TestRenderWithLoaderErrorsWithoutReturningPartialAtlas(t *testing.T) {
+	t.Parallel()
+
+	layout := &Layout{
+		Width:  4,
+		Height: 2,
+		Placements: []Placement{
+			{ID: "first", Width: 2, Height: 2},
+			{ID: "second", X: 2, Width: 2, Height: 2},
+		},
+	}
+	loadErr := errors.New("decode failed")
+	calls := make([]string, 0, 2)
+	got, err := RenderWithLoader(layout, func(id string) (image.Image, error) {
+		calls = append(calls, id)
+		if id == "second" {
+			return nil, loadErr
+		}
+
+		return image.NewRGBA(image.Rect(0, 0, 2, 2)), nil
+	})
+
+	if got != nil {
+		t.Fatal("RenderWithLoader returned a partial atlas")
+	}
+	if !errors.Is(err, loadErr) {
+		t.Fatalf("error = %v, want wrapped loader error", err)
+	}
+	if !reflect.DeepEqual(calls, []string{"first", "second"}) {
+		t.Fatalf("loader calls = %v, want first then second", calls)
+	}
+}
+
+func TestRenderWithLoaderRejectsInvalidInputs(t *testing.T) {
+	t.Parallel()
+
+	if _, err := RenderWithLoader(nil, nil); !errors.Is(err, ErrImageLoaderRequired) {
+		t.Fatalf("nil loader error = %v, want ErrImageLoaderRequired", err)
+	}
+
+	if _, err := RenderWithLoader(nil, func(string) (image.Image, error) {
+		t.Fatal("loader called for nil layout")
+		return nil, nil
+	}); !errors.Is(err, ErrLayoutRequired) {
+		t.Fatalf("nil layout error = %v, want ErrLayoutRequired", err)
+	}
+
+	maxInt := int(^uint(0) >> 1)
+	invalidLayouts := []struct {
+		name   string
+		layout *Layout
+	}{
+		{name: "zero image size", layout: &Layout{Width: 0, Height: 2}},
+		{name: "absurd image size", layout: &Layout{Width: maxInt, Height: 2}},
+		{
+			name: "placement out of bounds",
+			layout: &Layout{
+				Width: 1, Height: 1,
+				Placements: []Placement{{ID: "outside", X: 1, Width: 1, Height: 1}},
+			},
+		},
+	}
+
+	for _, test := range invalidLayouts {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			called := false
+			if _, err := RenderWithLoader(test.layout, func(string) (image.Image, error) {
+				called = true
+				return nil, nil
+			}); !errors.Is(err, ErrInvalidLayout) {
+				t.Fatalf("error = %v, want ErrInvalidLayout", err)
+			}
+			if called {
+				t.Fatal("loader called before layout validation")
+			}
+		})
+	}
+
+	layout := &Layout{
+		Width:  2,
+		Height: 2,
+		Placements: []Placement{
+			{ID: "typed-nil", Width: 2, Height: 2},
+		},
+	}
+	if got, err := RenderWithLoader(layout, func(string) (image.Image, error) {
+		return (*renderFuzzNilImage)(nil), nil
+	}); got != nil || !errors.Is(err, ErrSourceImageMissing) {
+		t.Fatalf("typed-nil result=(%v, %v), want nil and ErrSourceImageMissing", got, err)
+	}
+
+	if got, err := RenderWithLoader(layout, func(string) (image.Image, error) {
+		return nil, nil
+	}); got != nil || !errors.Is(err, ErrSourceImageMissing) {
+		t.Fatalf("nil image result=(%v, %v), want nil and ErrSourceImageMissing", got, err)
+	}
+
+	if got, err := RenderWithLoader(layout, func(string) (image.Image, error) {
+		return image.NewRGBA(image.Rect(0, 0, 1, 2)), nil
+	}); got != nil || !errors.Is(err, ErrSourceSizeMismatch) {
+		t.Fatalf("size mismatch result=(%v, %v), want nil and ErrSourceSizeMismatch", got, err)
 	}
 }
 

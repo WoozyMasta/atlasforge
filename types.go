@@ -6,6 +6,29 @@ package atlasforge
 
 import "image"
 
+const (
+	// HeuristicBestShortSideFit minimizes the smaller leftover edge first.
+	HeuristicBestShortSideFit Heuristic = iota
+	// HeuristicBestLongSideFit minimizes the larger leftover edge first.
+	HeuristicBestLongSideFit
+	// HeuristicBestAreaFit minimizes wasted free rectangle area first.
+	HeuristicBestAreaFit
+	// HeuristicBottomLeft prefers lower Y, then smaller X placements.
+	HeuristicBottomLeft
+	// HeuristicContactPoint maximizes contact with borders/used rectangles.
+	HeuristicContactPoint
+	// HeuristicFirstFit places into the first matching free rectangle.
+	// It favors planning speed over packing density.
+	HeuristicFirstFit
+)
+
+// Heuristic is the MaxRects scoring heuristic used for placement.
+type Heuristic int
+
+// ImageLoader loads one image by placement ID during rendering.
+// The renderer does not retain images after drawing each placement.
+type ImageLoader func(id string) (image.Image, error)
+
 // Sprite is a high-level input used by Pack.
 type Sprite struct {
 	// Image is the source pixels used by Pack.
@@ -64,25 +87,6 @@ type Options struct {
 	// Rotated placements are reported via Placement.Rotated.
 	AllowRotate bool `json:"allow_rotate" yaml:"allow_rotate"`
 }
-
-// Heuristic is the MaxRects scoring heuristic used for placement.
-type Heuristic int
-
-const (
-	// HeuristicBestShortSideFit minimizes the smaller leftover edge first.
-	HeuristicBestShortSideFit Heuristic = iota
-	// HeuristicBestLongSideFit minimizes the larger leftover edge first.
-	HeuristicBestLongSideFit
-	// HeuristicBestAreaFit minimizes wasted free rectangle area first.
-	HeuristicBestAreaFit
-	// HeuristicBottomLeft prefers lower Y, then smaller X placements.
-	HeuristicBottomLeft
-	// HeuristicContactPoint maximizes contact with borders/used rectangles.
-	HeuristicContactPoint
-	// HeuristicFirstFit places into the first matching free rectangle.
-	// It favors planning speed over packing density.
-	HeuristicFirstFit
-)
 
 // Atlas combines rendered image and the layout used to produce it.
 type Atlas struct {
