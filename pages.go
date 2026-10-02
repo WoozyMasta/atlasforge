@@ -104,6 +104,40 @@ func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
 	return atlases, nil
 }
 
+// BuildPages plans items and renders each page before passing it to consume.
+//
+// It retains layout metadata but not rendered pages or loaded images between callbacks.
+// A consumer that retains atlas images controls its own memory use.
+//
+// Errors do not roll back pages already passed to the consumer.
+func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsumer) error {
+	if load == nil {
+		return ErrImageLoaderRequired
+	}
+	if consume == nil {
+		return ErrAtlasConsumerRequired
+	}
+
+	layouts, err := PlanPages(items, opts)
+	if err != nil {
+		return err
+	}
+
+	for pageIndex := range layouts {
+		img, renderErr := RenderWithLoader(&layouts[pageIndex], load)
+		if renderErr != nil {
+			return fmt.Errorf("render page %d: %w", pageIndex, renderErr)
+		}
+
+		atlas := &Atlas{Image: img, Layout: layouts[pageIndex]}
+		if consumeErr := consume(pageIndex, atlas); consumeErr != nil {
+			return fmt.Errorf("consume page %d: %w", pageIndex, consumeErr)
+		}
+	}
+
+	return nil
+}
+
 // layoutFromMaxBin converts the partial fixed-bin placements to a full-size layout.
 func layoutFromMaxBin(items []Item, used []mrRect, opts Options) *Layout {
 	placements := make([]Placement, 0, len(items))

@@ -33,4 +33,7 @@ var (
 
 	// ErrImageLoaderRequired reports a missing lazy image loader.
 	ErrImageLoaderRequired = errors.New("image loader is required")
+
+	// ErrAtlasConsumerRequired reports a missing page consumer callback.
+	ErrAtlasConsumerRequired = errors.New("atlas consumer is required")
 )

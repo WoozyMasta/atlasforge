@@ -18,7 +18,8 @@ The package offers planning, rendering, and one-shot APIs:
   - [RenderWithLoader]: draw a Layout by loading each source on demand.
   - [Pack]: one-shot flow that plans from sprites and renders the atlas.
   - [PackPages]: one-shot flow that returns all rendered atlas pages.
+  - [BuildPages]: render planned pages sequentially through a consumer callback.
 
-See ExamplePack and ExamplePlanPages for usage examples.
+See ExamplePack, ExamplePlanPages, and ExampleBuildPages for usage examples.
 */
 package atlasforge

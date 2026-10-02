@@ -66,3 +66,28 @@ func ExampleRenderWithLoader() {
 	// Output:
 	// 2x2
 }
+
+func ExampleBuildPages() {
+	items := []Item{{ID: "icon", Width: 2, Height: 2}}
+	opts := Options{MinSize: 2, MaxSize: 2, ForceSquare: true}
+	load := func(id string) (image.Image, error) {
+		if id != "icon" {
+			return nil, fmt.Errorf("unknown source %q", id)
+		}
+
+		return image.NewRGBA(image.Rect(0, 0, 2, 2)), nil
+	}
+	consume := func(pageIndex int, atlas *Atlas) error {
+		fmt.Printf("page=%d size=%dx%d\n", pageIndex,
+			atlas.Layout.Width, atlas.Layout.Height)
+		return nil
+	}
+
+	if err := BuildPages(items, opts, load, consume); err != nil {
+		fmt.Println("build error")
+		return
+	}
+
+	// Output:
+	// page=0 size=2x2
+}

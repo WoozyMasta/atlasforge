@@ -29,6 +29,10 @@ type Heuristic int
 // The renderer does not retain images after drawing each placement.
 type ImageLoader func(id string) (image.Image, error)
 
+// AtlasConsumer receives one rendered page synchronously.
+// Page indexes start at zero and increase in output order.
+type AtlasConsumer func(pageIndex int, atlas *Atlas) error
+
 // Sprite is a high-level input used by Pack.
 type Sprite struct {
 	// Image is the source pixels used by Pack.

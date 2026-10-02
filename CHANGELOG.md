@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning][].
 * Optional edge extrusion into reserved sprite padding.
 * Multi-page planning and packing APIs.
 * Lazy source loading for rendering a single atlas layout.
+* Sequential multi-page rendering through a consumer callback.
 
 ### Changed
 
