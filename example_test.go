@@ -7,6 +7,7 @@ package atlasforge
 import (
 	"fmt"
 	"image"
+	"image/color"
 )
 
 func ExamplePack() {
@@ -90,4 +91,27 @@ func ExampleBuildPages() {
 
 	// Output:
 	// page=0 size=2x2
+}
+
+func ExamplePack_trimTransparent() {
+	source := image.NewNRGBA(image.Rect(0, 0, 8, 8))
+	source.SetNRGBA(2, 3, color.NRGBA{R: 255, A: 255})
+	options := Options{
+		MinSize: 4, MaxSize: 4, TrimTransparent: true,
+	}
+
+	atlas, err := Pack([]Sprite{{ID: "icon", Image: source}}, options)
+	if err != nil {
+		fmt.Println("pack error")
+		return
+	}
+
+	placement := atlas.Layout.Placements[0]
+	fmt.Printf("crop=%dx%d original=%dx%d offset=%d,%d\n",
+		placement.Width, placement.Height,
+		placement.OriginalWidth, placement.OriginalHeight,
+		placement.OffsetX, placement.OffsetY)
+
+	// Output:
+	// crop=1x1 original=8x8 offset=2,3
 }

@@ -82,7 +82,7 @@ func PlanPages(items []Item, opts Options) ([]Layout, error) {
 // It retains all source images and all rendered atlas images in memory.
 // An empty input returns a non-nil empty slice.
 func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
-	items, sourceMap, err := prepareSprites(sprites)
+	items, sourceMap, _, err := prepareSprites(sprites, false)
 	if err != nil {
 		return nil, err
 	}

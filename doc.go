@@ -10,6 +10,10 @@ and returns layout metadata with exact rectangle coordinates.
 Packing uses the MaxRects algorithm and is deterministic:
 repeated runs with the same input produce the same layout.
 
+Image-based [Pack] calls can trim transparent outer borders.
+Cropped placements keep original dimensions and offsets;
+render those layouts with the original source images to reproduce the atlas.
+
 The package offers planning, rendering, and one-shot APIs:
 
   - [Plan]: compute placement from items and options, returns Layout.

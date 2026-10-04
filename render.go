@@ -92,6 +92,7 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 	if layout.Render != nil {
 		extrude = layout.Render.Extrude
 	}
+	normalizeTransparent := layout.Render != nil && layout.Render.TrimTransparent
 
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
@@ -108,6 +109,10 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 			if err := validatePlacementSource(placement, src); err != nil {
 				return nil, err
 			}
+		}
+
+		if placement.OriginalWidth > 0 || normalizeTransparent {
+			src = sourceForPlacement(placement, src, normalizeTransparent)
 		}
 
 		x := placement.X
@@ -222,6 +227,13 @@ func validateLayout(layout *Layout) error {
 			)
 		}
 
+		if placement.OriginalWidth != 0 || placement.OriginalHeight != 0 ||
+			placement.OffsetX != 0 || placement.OffsetY != 0 {
+			if err := validateTrimMetadata(placement); err != nil {
+				return err
+			}
+		}
+
 		effectiveWidth := placement.Width
 		effectiveHeight := placement.Height
 		if placement.Rotated {
@@ -304,13 +316,69 @@ func validatePlacementSource(placement Placement, src image.Image) error {
 
 	sw := src.Bounds().Dx()
 	sh := src.Bounds().Dy()
-	if sw != placement.Width || sh != placement.Height {
+	expectedWidth := placement.Width
+	expectedHeight := placement.Height
+	if placement.OriginalWidth > 0 {
+		expectedWidth = placement.OriginalWidth
+		expectedHeight = placement.OriginalHeight
+	}
+	if sw != expectedWidth || sh != expectedHeight {
+		if placement.OriginalWidth > 0 {
+			return fmt.Errorf(
+				"%w: ID=%q source=%dx%d original=%dx%d",
+				ErrSourceSizeMismatch,
+				placement.ID,
+				sw,
+				sh,
+				expectedWidth,
+				expectedHeight,
+			)
+		}
+
 		return fmt.Errorf(
 			"%w: ID=%q source=%dx%d placement=%dx%d",
 			ErrSourceSizeMismatch,
 			placement.ID,
 			sw,
 			sh,
+			expectedWidth,
+			expectedHeight,
+		)
+	}
+
+	return nil
+}
+
+// validateTrimMetadata rejects incomplete or out-of-bounds source crop metadata.
+func validateTrimMetadata(placement Placement) error {
+	originalWidth := placement.OriginalWidth
+	originalHeight := placement.OriginalHeight
+	offsetX := placement.OffsetX
+	offsetY := placement.OffsetY
+	if originalWidth == 0 && originalHeight == 0 {
+		if offsetX != 0 || offsetY != 0 {
+			return fmt.Errorf(
+				"%w: crop offsets require original dimensions: ID=%q",
+				ErrInvalidLayout,
+				placement.ID,
+			)
+		}
+
+		return nil
+	}
+
+	if originalWidth <= 0 || originalHeight <= 0 ||
+		offsetX < 0 || offsetY < 0 ||
+		placement.Width > originalWidth || placement.Height > originalHeight ||
+		offsetX > originalWidth-placement.Width || offsetY > originalHeight-placement.Height {
+		return fmt.Errorf(
+			"%w: invalid crop metadata: ID=%q original=%dx%d offset=%d,%d crop=%dx%d",
+			ErrInvalidLayout,
+			placement.ID,
+			originalWidth,
+			originalHeight,
+			offsetX,
+			offsetY,
 			placement.Width,
 			placement.Height,
 		)

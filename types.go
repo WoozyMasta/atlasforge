@@ -90,6 +90,10 @@ type Options struct {
 	// AllowRotate enables 90-degree clockwise item rotation.
 	// Rotated placements are reported via Placement.Rotated.
 	AllowRotate bool `json:"allow_rotate" yaml:"allow_rotate"`
+
+	// TrimTransparent removes fully transparent pixels outside the image content.
+	// It is applied by image-based packing APIs, not geometry-only planning.
+	TrimTransparent bool `json:"trim_transparent,omitempty" yaml:"trim_transparent,omitempty"`
 }
 
 // Atlas combines rendered image and the layout used to produce it.
@@ -117,7 +121,7 @@ type Layout struct {
 	Height int `json:"height" yaml:"height"`
 }
 
-// RenderSettings contains pixel operations recorded by Plan for Render.
+// RenderSettings contains pixel operations recorded for reproducible rendering.
 type RenderSettings struct {
 	// Padding is the reserved margin around placements.
 	Padding int `json:"padding,omitempty" yaml:"padding,omitempty"`
@@ -140,14 +144,26 @@ type Placement struct {
 	// Y is the top-left Y coordinate in atlas pixels.
 	Y int `json:"y" yaml:"y"`
 
-	// Width is the original source width before rotation.
+	// Width is the packed content width before rotation.
 	Width int `json:"width" yaml:"width"`
 
-	// Height is the original source height before rotation.
+	// Height is the packed content height before rotation.
 	Height int `json:"height" yaml:"height"`
 
 	// Rotated reports clockwise 90-degree placement during rendering.
 	Rotated bool `json:"rotated" yaml:"rotated"`
+
+	// OriginalWidth is the source width before transparent trimming.
+	OriginalWidth int `json:"original_width,omitempty" yaml:"original_width,omitempty"`
+
+	// OriginalHeight is the source height before transparent trimming.
+	OriginalHeight int `json:"original_height,omitempty" yaml:"original_height,omitempty"`
+
+	// OffsetX is the crop's horizontal offset in the original source.
+	OffsetX int `json:"offset_x,omitempty" yaml:"offset_x,omitempty"`
+
+	// OffsetY is the crop's vertical offset in the original source.
+	OffsetY int `json:"offset_y,omitempty" yaml:"offset_y,omitempty"`
 }
 
 // Item describes a rectangular payload for layout planning.
