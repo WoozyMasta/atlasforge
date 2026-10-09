@@ -79,10 +79,17 @@ func PlanPages(items []Item, opts Options) ([]Layout, error) {
 
 // PackPages plans and renders sprites across one or more atlases.
 //
+// With TrimTransparent enabled, source images are scanned before planning.
 // It retains all source images and all rendered atlas images in memory.
 // An empty input returns a non-nil empty slice.
 func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
-	items, sourceMap, _, err := prepareSprites(sprites, false)
+	if opts.TrimTransparent {
+		if err := validateOptions(opts); err != nil {
+			return nil, err
+		}
+	}
+
+	items, sourceMap, trimByID, err := prepareSprites(sprites, opts.TrimTransparent)
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +101,7 @@ func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
 
 	atlases := make([]Atlas, len(layouts))
 	for i := range layouts {
+		applyTrimMetadata(&layouts[i], trimByID, opts)
 		atlasImage, renderErr := renderWithSourceMap(&layouts[i], sourceMap)
 		if renderErr != nil {
 			return nil, fmt.Errorf("render page %d: %w", i, renderErr)
@@ -107,6 +115,7 @@ func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
 // BuildPages plans items and renders each page before passing it to consume.
 //
 // It retains layout metadata but not rendered pages or loaded images between callbacks.
+// With TrimTransparent enabled, load is called once for scanning and again for rendering.
 // A consumer that retains atlas images controls its own memory use.
 //
 // Errors do not roll back pages already passed to the consumer.
@@ -118,12 +127,29 @@ func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsu
 		return ErrAtlasConsumerRequired
 	}
 
+	var trimByID map[string]trimMetadata
+	if opts.TrimTransparent {
+		if err := validateOptions(opts); err != nil {
+			return err
+		}
+		if err := validateItems(items); err != nil {
+			return err
+		}
+
+		var err error
+		items, trimByID, err = prepareTrimmedItems(items, load)
+		if err != nil {
+			return err
+		}
+	}
+
 	layouts, err := PlanPages(items, opts)
 	if err != nil {
 		return err
 	}
 
 	for pageIndex := range layouts {
+		applyTrimMetadata(&layouts[pageIndex], trimByID, opts)
 		img, renderErr := RenderWithLoader(&layouts[pageIndex], load)
 		if renderErr != nil {
 			return fmt.Errorf("render page %d: %w", pageIndex, renderErr)

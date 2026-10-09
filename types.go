@@ -27,6 +27,7 @@ type Heuristic int
 
 // ImageLoader loads one image by placement ID during rendering.
 // The renderer does not retain images after drawing each placement.
+// When BuildPages uses TrimTransparent, it also loads each source once for scanning.
 type ImageLoader func(id string) (image.Image, error)
 
 // AtlasConsumer receives one rendered page synchronously.

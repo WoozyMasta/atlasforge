@@ -5,6 +5,7 @@
 package atlasforge
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 )
@@ -197,4 +198,78 @@ func sourceSubImage(src image.Image, bounds image.Rectangle) image.Image {
 	}
 
 	return sourceImageView{source: src, bounds: bounds}
+}
+
+// trimmedSourceGeometry returns packed dimensions and reversible crop metadata.
+func trimmedSourceGeometry(src image.Image) (int, int, trimMetadata, bool) {
+	bounds := src.Bounds()
+	contentBounds, hasContent := alphaBounds(src)
+	if !hasContent {
+		contentBounds = image.Rect(
+			bounds.Min.X,
+			bounds.Min.Y,
+			bounds.Min.X+1,
+			bounds.Min.Y+1,
+		)
+	}
+
+	if contentBounds == bounds {
+		return bounds.Dx(), bounds.Dy(), trimMetadata{}, false
+	}
+
+	return contentBounds.Dx(), contentBounds.Dy(), trimMetadata{
+		originalWidth:  bounds.Dx(),
+		originalHeight: bounds.Dy(),
+		offsetX:        contentBounds.Min.X - bounds.Min.X,
+		offsetY:        contentBounds.Min.Y - bounds.Min.Y,
+	}, true
+}
+
+// prepareTrimmedItems scans sources once and retains only geometry metadata.
+func prepareTrimmedItems(items []Item, load ImageLoader) ([]Item, map[string]trimMetadata, error) {
+	trimmedItems := append([]Item(nil), items...)
+	metadataByID := make(map[string]trimMetadata, len(items))
+
+	for i := range items {
+		item := items[i]
+		src, err := load(item.ID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("scan source %q for trimming: %w", item.ID, err)
+		}
+
+		if err := validatePlacementSource(Placement{
+			ID:     item.ID,
+			Width:  item.Width,
+			Height: item.Height,
+		}, src); err != nil {
+			return nil, nil, fmt.Errorf("scan source %q for trimming: %w", item.ID, err)
+		}
+
+		width, height, metadata, hasMetadata := trimmedSourceGeometry(src)
+		trimmedItems[i].Width = width
+		trimmedItems[i].Height = height
+		if hasMetadata {
+			metadataByID[item.ID] = metadata
+		}
+	}
+
+	return trimmedItems, metadataByID, nil
+}
+
+// applyTrimMetadata attaches source geometry and render settings to one layout.
+func applyTrimMetadata(layout *Layout, metadataByID map[string]trimMetadata, opts Options) {
+	if !opts.TrimTransparent {
+		return
+	}
+
+	for i := range layout.Placements {
+		if metadata, ok := metadataByID[layout.Placements[i].ID]; ok {
+			layout.Placements[i].OriginalWidth = metadata.originalWidth
+			layout.Placements[i].OriginalHeight = metadata.originalHeight
+			layout.Placements[i].OffsetX = metadata.offsetX
+			layout.Placements[i].OffsetY = metadata.offsetY
+		}
+	}
+
+	layout.Render = renderSettingsForImageOptions(opts)
 }

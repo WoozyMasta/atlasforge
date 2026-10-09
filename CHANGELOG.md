@@ -19,29 +19,27 @@ and this project adheres to [Semantic Versioning][].
 ### Added
 
 * Optional edge extrusion into reserved sprite padding.
-* Multi-page planning and packing APIs.
-* Lazy source loading for rendering a single atlas layout.
-* Sequential multi-page rendering through a consumer callback.
-* Optional transparent-border trimming with reversible source geometry.
+* Multi-page atlas planning and packing, including sequential callback builds
+  and on-demand source loading for single- and multi-page rendering.
+* Optional transparent-border trimming with reversible source geometry
+  across single- and multi-page packing and build APIs.
 
 ### Changed
 
-* Share fixed-bin MaxRects insertion between single- and multi-page planning.
+* Improve planning throughput by sharing fixed-bin MaxRects insertion
+  and reducing redundant size checks and free-space pruning.
 * Speed up clockwise RGBA sprite rotation while preserving source bounds.
-* Reduce redundant atlas size feasibility checks during planning.
-* Reduce MaxRects free-space pruning overhead on large atlas plans.
 * Lowered the minimum Go version to 1.22.
 
 ### Fixed
 
-* Reject typed-nil source images instead of panicking.
+* Reject typed-nil images, invalid placements,
+  and overflowing atlas geometry before rendering.
 * Reject invalid non-finite or negative aspect penalties.
 * Fix MaxRects best-area scoring for large free rectangles.
-* Reject overflowing atlas dimensions and padded area calculations.
-* Consider valid atlas width/height candidates independently
-  and respect maximum bounds.
+* Consider atlas width and height candidates independently
+  within maximum bounds.
 * Preserve non-zero source image bounds when rendering sprites.
-* Reject invalid atlas placements before allocating or rendering.
 
 ## [0.1.0][] - 2026-03-04
 

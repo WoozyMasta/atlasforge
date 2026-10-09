@@ -28,15 +28,7 @@ func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
 	}
 
 	if opts.TrimTransparent {
-		for i := range layout.Placements {
-			if metadata, ok := trimByID[layout.Placements[i].ID]; ok {
-				layout.Placements[i].OriginalWidth = metadata.originalWidth
-				layout.Placements[i].OriginalHeight = metadata.originalHeight
-				layout.Placements[i].OffsetX = metadata.offsetX
-				layout.Placements[i].OffsetY = metadata.offsetY
-			}
-		}
-		layout.Render = renderSettingsForImageOptions(opts)
+		applyTrimMetadata(layout, trimByID, opts)
 	}
 
 	atlasImage, err := renderWithSourceMap(layout, sourceMap)
@@ -112,26 +104,11 @@ func prepareSprites(sprites []Sprite, trim bool) ([]Item, map[string]image.Image
 		}
 
 		if trim {
-			sourceBounds := sprite.Image.Bounds()
-			contentBounds, hasContent := alphaBounds(sprite.Image)
-			if !hasContent {
-				contentBounds = image.Rect(
-					sourceBounds.Min.X,
-					sourceBounds.Min.Y,
-					sourceBounds.Min.X+1,
-					sourceBounds.Min.Y+1,
-				)
-			}
-
-			width = contentBounds.Dx()
-			height = contentBounds.Dy()
-			if contentBounds != sourceBounds {
-				trimByID[sprite.ID] = trimMetadata{
-					originalWidth:  imageWidth,
-					originalHeight: imageHeight,
-					offsetX:        contentBounds.Min.X - sourceBounds.Min.X,
-					offsetY:        contentBounds.Min.Y - sourceBounds.Min.Y,
-				}
+			var metadata trimMetadata
+			var hasMetadata bool
+			width, height, metadata, hasMetadata = trimmedSourceGeometry(sprite.Image)
+			if hasMetadata {
+				trimByID[sprite.ID] = metadata
 			}
 		}
 
