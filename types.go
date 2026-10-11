@@ -26,8 +26,13 @@ const (
 type Heuristic int
 
 // ImageLoader loads one image by placement ID during rendering.
-// The renderer does not retain images after drawing each placement.
-// When BuildPages uses TrimTransparent, it also loads each source once for scanning.
+//
+// [BuildPages] may load sources for trimming, exact pixel comparisons, and drawing.
+// When [BuildPages] is used, the loader
+// must return stable source dimensions and pixels across calls.
+//
+// The library releases each loaded image after its scan
+// or draw rather than retaining the full source set.
 type ImageLoader func(id string) (image.Image, error)
 
 // AtlasConsumer receives one rendered page synchronously.
@@ -95,6 +100,10 @@ type Options struct {
 	// TrimTransparent removes fully transparent pixels outside the image content.
 	// It is applied by image-based packing APIs, not geometry-only planning.
 	TrimTransparent bool `json:"trim_transparent,omitempty" yaml:"trim_transparent,omitempty"`
+
+	// Deduplicate aliases sprites with identical rendered pixels.
+	// It is applied by image-based packing APIs, not geometry-only planning.
+	Deduplicate bool `json:"deduplicate,omitempty" yaml:"deduplicate,omitempty"`
 }
 
 // Atlas combines rendered image and the layout used to produce it.
@@ -139,6 +148,9 @@ type Placement struct {
 	// ID matches Item.ID / Sprite.ID used for this placement.
 	ID string `json:"id" yaml:"id"`
 
+	// AliasOf identifies the canonical placement sharing this physical rectangle.
+	AliasOf string `json:"alias_of,omitempty" yaml:"alias_of,omitempty"`
+
 	// X is the top-left X coordinate in atlas pixels.
 	X int `json:"x" yaml:"x"`
 
@@ -151,9 +163,6 @@ type Placement struct {
 	// Height is the packed content height before rotation.
 	Height int `json:"height" yaml:"height"`
 
-	// Rotated reports clockwise 90-degree placement during rendering.
-	Rotated bool `json:"rotated" yaml:"rotated"`
-
 	// OriginalWidth is the source width before transparent trimming.
 	OriginalWidth int `json:"original_width,omitempty" yaml:"original_width,omitempty"`
 
@@ -165,6 +174,9 @@ type Placement struct {
 
 	// OffsetY is the crop's vertical offset in the original source.
 	OffsetY int `json:"offset_y,omitempty" yaml:"offset_y,omitempty"`
+
+	// Rotated reports clockwise 90-degree placement during rendering.
+	Rotated bool `json:"rotated" yaml:"rotated"`
 }
 
 // Item describes a rectangular payload for layout planning.

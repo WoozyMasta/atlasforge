@@ -96,6 +96,10 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
+		if placement.AliasOf != "" {
+			continue
+		}
+
 		src := sourceMap[placement.ID]
 		if load != nil {
 			var err error
@@ -255,6 +259,9 @@ func validateLayout(layout *Layout) error {
 			)
 		}
 	}
+	if err := validateAliases(layout); err != nil {
+		return err
+	}
 
 	if layout.Render != nil && layout.Render.Extrude > 0 {
 		if err := validateExtrusionBounds(layout); err != nil {
@@ -295,6 +302,10 @@ func validateExtrusionBounds(layout *Layout) error {
 func validatePlacementSources(layout *Layout, sourceMap map[string]image.Image) error {
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
+		if placement.AliasOf != "" {
+			continue
+		}
+
 		src, ok := sourceMap[placement.ID]
 		if !ok {
 			return fmt.Errorf("%w: ID=%q", ErrSourceNotFound, placement.ID)

@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning][].
   and on-demand source loading for single- and multi-page rendering.
 * Optional transparent-border trimming with reversible source geometry
   across single- and multi-page packing and build APIs.
+* Optional exact pixel deduplication with explicit aliases
+  across single- and multi-page packing and build APIs.
 
 ### Changed
 

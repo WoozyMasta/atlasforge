@@ -11,7 +11,7 @@ import (
 
 // Pack plans and renders atlas image in a single call.
 func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
-	if opts.TrimTransparent {
+	if opts.TrimTransparent || opts.Deduplicate {
 		if err := validateOptions(opts); err != nil {
 			return nil, err
 		}
@@ -22,6 +22,17 @@ func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
 		return nil, err
 	}
 
+	var aliases []aliasRelation
+	if opts.Deduplicate {
+		items, aliases = deduplicatePreparedSprites(
+			items,
+			sourceMap,
+			trimByID,
+			opts.TrimTransparent,
+			nil,
+		)
+	}
+
 	layout, err := Plan(items, opts)
 	if err != nil {
 		return nil, err
@@ -29,6 +40,12 @@ func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
 
 	if opts.TrimTransparent {
 		applyTrimMetadata(layout, trimByID, opts)
+	}
+
+	if len(aliases) > 0 {
+		if err := appendAliases(layout, aliases, trimByID); err != nil {
+			return nil, err
+		}
 	}
 
 	atlasImage, err := renderWithSourceMap(layout, sourceMap)

@@ -79,11 +79,11 @@ func PlanPages(items []Item, opts Options) ([]Layout, error) {
 
 // PackPages plans and renders sprites across one or more atlases.
 //
-// With TrimTransparent enabled, source images are scanned before planning.
+// With TrimTransparent or Deduplicate enabled, sources are scanned before planning.
 // It retains all source images and all rendered atlas images in memory.
 // An empty input returns a non-nil empty slice.
 func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
-	if opts.TrimTransparent {
+	if opts.TrimTransparent || opts.Deduplicate {
 		if err := validateOptions(opts); err != nil {
 			return nil, err
 		}
@@ -94,6 +94,17 @@ func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
 		return nil, err
 	}
 
+	var aliases []aliasRelation
+	if opts.Deduplicate {
+		items, aliases = deduplicatePreparedSprites(
+			items,
+			sourceMap,
+			trimByID,
+			opts.TrimTransparent,
+			nil,
+		)
+	}
+
 	layouts, err := PlanPages(items, opts)
 	if err != nil {
 		return nil, err
@@ -102,6 +113,15 @@ func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
 	atlases := make([]Atlas, len(layouts))
 	for i := range layouts {
 		applyTrimMetadata(&layouts[i], trimByID, opts)
+	}
+
+	if len(aliases) > 0 {
+		if err := appendAliasesAcrossPages(layouts, aliases, trimByID); err != nil {
+			return nil, err
+		}
+	}
+
+	for i := range layouts {
 		atlasImage, renderErr := renderWithSourceMap(&layouts[i], sourceMap)
 		if renderErr != nil {
 			return nil, fmt.Errorf("render page %d: %w", i, renderErr)
@@ -115,7 +135,7 @@ func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
 // BuildPages plans items and renders each page before passing it to consume.
 //
 // It retains layout metadata but not rendered pages or loaded images between callbacks.
-// With TrimTransparent enabled, load is called once for scanning and again for rendering.
+// Trimming and deduplication may load sources more than once before rendering.
 // A consumer that retains atlas images controls its own memory use.
 //
 // Errors do not roll back pages already passed to the consumer.
@@ -128,7 +148,10 @@ func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsu
 	}
 
 	var trimByID map[string]trimMetadata
-	if opts.TrimTransparent {
+	var aliases []aliasRelation
+	var err error
+
+	if opts.TrimTransparent || opts.Deduplicate {
 		if err := validateOptions(opts); err != nil {
 			return err
 		}
@@ -136,10 +159,16 @@ func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsu
 			return err
 		}
 
-		var err error
-		items, trimByID, err = prepareTrimmedItems(items, load)
-		if err != nil {
-			return err
+		if opts.Deduplicate {
+			items, trimByID, aliases, err = prepareDeduplicatedItems(items, opts, load, nil)
+			if err != nil {
+				return err
+			}
+		} else if opts.TrimTransparent {
+			items, trimByID, err = prepareTrimmedItems(items, load)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -148,8 +177,17 @@ func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsu
 		return err
 	}
 
+	for i := range layouts {
+		applyTrimMetadata(&layouts[i], trimByID, opts)
+	}
+
+	if len(aliases) > 0 {
+		if err := appendAliasesAcrossPages(layouts, aliases, trimByID); err != nil {
+			return err
+		}
+	}
+
 	for pageIndex := range layouts {
-		applyTrimMetadata(&layouts[pageIndex], trimByID, opts)
 		img, renderErr := RenderWithLoader(&layouts[pageIndex], load)
 		if renderErr != nil {
 			return fmt.Errorf("render page %d: %w", pageIndex, renderErr)
