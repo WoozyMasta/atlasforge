@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning][].
   across single- and multi-page packing and build APIs.
 * Optional exact pixel deduplication with explicit aliases
   across single- and multi-page packing and build APIs.
+* Image-independent atlas and multi-page utilization, alias,
+  rotation and trim statistics reports.
 
 ### Changed
 
