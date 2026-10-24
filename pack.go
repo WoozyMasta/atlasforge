@@ -11,24 +11,24 @@ import (
 
 // Pack plans and renders atlas image in a single call.
 func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
-	if opts.TrimTransparent || opts.Deduplicate {
+	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil {
 		if err := validateOptions(opts); err != nil {
 			return nil, err
 		}
 	}
 
-	items, sourceMap, trimByID, err := prepareSprites(sprites, opts.TrimTransparent)
+	items, sourceMap, trimByID, err := prepareSpritesWithOptions(sprites, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	var aliases []aliasRelation
 	if opts.Deduplicate {
-		items, aliases = deduplicatePreparedSprites(
+		items, aliases = deduplicatePreparedSpritesWithOptions(
 			items,
 			sourceMap,
 			trimByID,
-			opts.TrimTransparent,
+			opts,
 			nil,
 		)
 	}
@@ -38,9 +38,7 @@ func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
 		return nil, err
 	}
 
-	if opts.TrimTransparent {
-		applyTrimMetadata(layout, trimByID, opts)
-	}
+	applyTrimMetadata(layout, trimByID, opts)
 
 	if len(aliases) > 0 {
 		if err := appendAliases(layout, aliases, trimByID); err != nil {
@@ -59,12 +57,15 @@ func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
 	}, nil
 }
 
-// prepareSprites validates sprite input and builds planner items/source map.
-func prepareSprites(sprites []Sprite, trim bool) ([]Item, map[string]image.Image, map[string]trimMetadata, error) {
+// prepareSpritesWithOptions validates sources and optionally trims by alpha or color key.
+func prepareSpritesWithOptions(
+	sprites []Sprite,
+	opts Options,
+) ([]Item, map[string]image.Image, map[string]trimMetadata, error) {
 	items := make([]Item, 0, len(sprites))
 	sourceMap := make(map[string]image.Image, len(sprites))
 	var trimByID map[string]trimMetadata
-	if trim {
+	if opts.TrimTransparent || opts.ColorKey != nil && opts.ColorKey.Trim {
 		trimByID = make(map[string]trimMetadata, len(sprites))
 	}
 
@@ -120,10 +121,10 @@ func prepareSprites(sprites []Sprite, trim bool) ([]Item, map[string]image.Image
 			return nil, nil, nil, fmt.Errorf("%w: duplicate sprite ID %q", ErrInvalidItem, sprite.ID)
 		}
 
-		if trim {
+		if opts.TrimTransparent || opts.ColorKey != nil && opts.ColorKey.Trim {
 			var metadata trimMetadata
 			var hasMetadata bool
-			width, height, metadata, hasMetadata = trimmedSourceGeometry(sprite.Image)
+			width, height, metadata, hasMetadata = trimmedSourceGeometryWithOptions(sprite.Image, opts)
 			if hasMetadata {
 				trimByID[sprite.ID] = metadata
 			}
@@ -143,14 +144,18 @@ func prepareSprites(sprites []Sprite, trim bool) ([]Item, map[string]image.Image
 // renderSettingsForImageOptions records settings needed by image-based packing.
 func renderSettingsForImageOptions(opts Options) *RenderSettings {
 	settings := renderSettingsForOptions(opts)
-	if !opts.TrimTransparent {
+	if !opts.TrimTransparent && opts.ColorKey == nil {
 		return settings
 	}
 
 	if settings == nil {
 		settings = &RenderSettings{Padding: opts.Padding}
 	}
-	settings.TrimTransparent = true
+	settings.TrimTransparent = opts.TrimTransparent
+	if opts.ColorKey != nil {
+		colorKey := *opts.ColorKey
+		settings.ColorKey = &colorKey
+	}
 
 	return settings
 }

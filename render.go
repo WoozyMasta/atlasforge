@@ -93,6 +93,10 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 		extrude = layout.Render.Extrude
 	}
 	normalizeTransparent := layout.Render != nil && layout.Render.TrimTransparent
+	var colorKey *ColorKeyOptions
+	if layout.Render != nil {
+		colorKey = layout.Render.ColorKey
+	}
 
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
@@ -115,8 +119,8 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 			}
 		}
 
-		if placement.OriginalWidth > 0 || normalizeTransparent {
-			src = sourceForPlacement(placement, src, normalizeTransparent)
+		if placement.OriginalWidth > 0 || normalizeTransparent || colorKey != nil && colorKey.ToAlpha {
+			src = sourceForPlacementWithColorKey(placement, src, normalizeTransparent, colorKey)
 		}
 
 		x := placement.X
@@ -124,6 +128,8 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 
 		if placement.Rotated {
 			drawRotated90Into(atlas, x, y, src, placement.Width, placement.Height)
+		} else if colorKeyView, ok := src.(colorKeyImageView); ok {
+			drawColorKeyViewInto(atlas, x, y, colorKeyView, placement.Width, placement.Height)
 		} else {
 			draw.Draw(
 				atlas,
@@ -146,6 +152,25 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 	}
 
 	return atlas, nil
+}
+
+// drawColorKeyViewInto writes converted pixels directly to the atlas buffer.
+func drawColorKeyViewInto(dst *image.RGBA, dstX, dstY int, src colorKeyImageView, width, height int) {
+	bounds := src.Bounds()
+	stride := dst.Stride
+	pixels := dst.Pix
+	for y := range height {
+		destinationRow := (dstY+y)*stride + dstX*4
+		sourceY := bounds.Min.Y + y
+		for x := range width {
+			pixel := src.RGBAAt(bounds.Min.X+x, sourceY)
+			destination := destinationRow + x*4
+			pixels[destination] = pixel.R
+			pixels[destination+1] = pixel.G
+			pixels[destination+2] = pixel.B
+			pixels[destination+3] = pixel.A
+		}
+	}
 }
 
 // extrudeRGBA copies each edge pixel into a bounded RGBA margin around content.
@@ -205,6 +230,13 @@ func validateLayout(layout *Layout) error {
 			layout.Render.Extrude,
 			layout.Render.Padding,
 		)
+	}
+
+	if layout.Render != nil &&
+		layout.Render.ColorKey != nil &&
+		!layout.Render.ColorKey.Trim &&
+		!layout.Render.ColorKey.ToAlpha {
+		return fmt.Errorf("%w: render ColorKey requires Trim or ToAlpha", ErrInvalidLayout)
 	}
 
 	maxInt := int(^uint(0) >> 1)

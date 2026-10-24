@@ -223,6 +223,22 @@ The example shows the original canvases and the compacted atlas.
 
 ![Transparent sprite bounds trimmed before packing](examples/trim.png)
 
+### Exact color key
+
+`ColorKey` can exclude exact color matches from trim bounds with `Trim`,
+replace them with transparent pixels with `ToAlpha`, or do both.
+Matching uses the renderer's canonical RGBA8 pixel, including alpha;
+anti-aliased shades do not match.
+It affects image-based packing and rendering, not geometry-only `Plan` APIs.
+
+```go
+opts.ColorKey = &atlasforge.ColorKeyOptions{
+    Color:   color.NRGBA{R: 255, G: 255, B: 255, A: 255},
+    Trim:    true,
+    ToAlpha: true,
+}
+```
+
 ### Duplicate sprite reuse
 
 `Deduplicate` stores identical rendered pixels once

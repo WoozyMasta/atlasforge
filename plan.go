@@ -81,6 +81,10 @@ func renderSettingsForOptions(opts Options) *RenderSettings {
 
 // validateOptions validates packing options.
 func validateOptions(opts Options) error {
+	if err := validateColorKeyOptions(opts.ColorKey); err != nil {
+		return err
+	}
+
 	if opts.MinSize <= 0 || opts.MaxSize <= 0 || opts.MinSize > opts.MaxSize {
 		return fmt.Errorf(
 			"%w: MinSize=%d MaxSize=%d",

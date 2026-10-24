@@ -159,8 +159,13 @@ func alphaBoundsPaletted(src *image.Paletted) (image.Rectangle, bool) {
 	})
 }
 
-// sourceForPlacement returns the source view described by placement metadata.
-func sourceForPlacement(placement Placement, src image.Image, normalizeTransparent bool) image.Image {
+// sourceForPlacementWithColorKey restores crop geometry and applies key-to-alpha lazily.
+func sourceForPlacementWithColorKey(
+	placement Placement,
+	src image.Image,
+	normalizeTransparent bool,
+	colorKey *ColorKeyOptions,
+) image.Image {
 	bounds := src.Bounds()
 	cropBounds := bounds
 	if placement.OriginalWidth > 0 {
@@ -173,14 +178,14 @@ func sourceForPlacement(placement Placement, src image.Image, normalizeTranspare
 			minY+placement.Height,
 		)
 	}
-	if cropBounds == bounds && !normalizeTransparent {
+	if cropBounds == bounds && !normalizeTransparent && (colorKey == nil || !colorKey.ToAlpha) {
 		return src
 	}
 
 	view := sourceSubImage(src, cropBounds)
+	view = colorKeyView(view, colorKey)
 	if normalizeTransparent && placement.Width == 1 && placement.Height == 1 {
-		_, _, _, alpha := view.At(cropBounds.Min.X, cropBounds.Min.Y).RGBA()
-		if alpha == 0 {
+		if canonicalRGBA8(view.At(cropBounds.Min.X, cropBounds.Min.Y)).A == 0 {
 			return transparentPixelImage
 		}
 	}
@@ -200,10 +205,10 @@ func sourceSubImage(src image.Image, bounds image.Rectangle) image.Image {
 	return sourceImageView{source: src, bounds: bounds}
 }
 
-// trimmedSourceGeometry returns packed dimensions and reversible crop metadata.
-func trimmedSourceGeometry(src image.Image) (int, int, trimMetadata, bool) {
+// trimmedSourceGeometryWithOptions finds content bounds after requested pixel filters.
+func trimmedSourceGeometryWithOptions(src image.Image, opts Options) (int, int, trimMetadata, bool) {
 	bounds := src.Bounds()
-	contentBounds, hasContent := alphaBounds(src)
+	contentBounds, hasContent := sourceContentBounds(src, opts)
 	if !hasContent {
 		contentBounds = image.Rect(
 			bounds.Min.X,
@@ -225,8 +230,33 @@ func trimmedSourceGeometry(src image.Image) (int, int, trimMetadata, bool) {
 	}, true
 }
 
+// sourceContentBounds applies transparent and exact color-key trim predicates.
+func sourceContentBounds(src image.Image, opts Options) (image.Rectangle, bool) {
+	key := opts.ColorKey
+	if !opts.TrimTransparent && (key == nil || !key.Trim) {
+		return src.Bounds(), !src.Bounds().Empty()
+	}
+
+	needsKeyScan := key != nil && (key.Trim || (key.ToAlpha && opts.TrimTransparent))
+	if !needsKeyScan {
+		return alphaBounds(src)
+	}
+
+	keyPixel := canonicalColorKey(key.Color)
+	return alphaBoundsBy(src.Bounds(), func(x, y int) bool {
+		pixel := canonicalImageRGBA8(src, x, y)
+		keyMatch := pixel == keyPixel
+		transformedAlpha := pixel.A
+		if key.ToAlpha && keyMatch {
+			transformedAlpha = 0
+		}
+
+		return (!key.Trim || !keyMatch) && (!opts.TrimTransparent || transformedAlpha != 0)
+	})
+}
+
 // prepareTrimmedItems scans sources once and retains only geometry metadata.
-func prepareTrimmedItems(items []Item, load ImageLoader) ([]Item, map[string]trimMetadata, error) {
+func prepareTrimmedItems(items []Item, opts Options, load ImageLoader) ([]Item, map[string]trimMetadata, error) {
 	trimmedItems := append([]Item(nil), items...)
 	metadataByID := make(map[string]trimMetadata, len(items))
 
@@ -245,7 +275,7 @@ func prepareTrimmedItems(items []Item, load ImageLoader) ([]Item, map[string]tri
 			return nil, nil, fmt.Errorf("scan source %q for trimming: %w", item.ID, err)
 		}
 
-		width, height, metadata, hasMetadata := trimmedSourceGeometry(src)
+		width, height, metadata, hasMetadata := trimmedSourceGeometryWithOptions(src, opts)
 		trimmedItems[i].Width = width
 		trimmedItems[i].Height = height
 		if hasMetadata {
@@ -258,7 +288,8 @@ func prepareTrimmedItems(items []Item, load ImageLoader) ([]Item, map[string]tri
 
 // applyTrimMetadata attaches source geometry and render settings to one layout.
 func applyTrimMetadata(layout *Layout, metadataByID map[string]trimMetadata, opts Options) {
-	if !opts.TrimTransparent {
+	if !opts.TrimTransparent &&
+		(opts.ColorKey == nil || !opts.ColorKey.Trim && !opts.ColorKey.ToAlpha) {
 		return
 	}
 

@@ -243,7 +243,7 @@ func TestDedupExactComparisonRejectsForcedHashCollision(t *testing.T) {
 		{ID: "duplicate", Image: duplicate},
 		{ID: "collision", Image: different},
 	}
-	items, sources, trimByID, err := prepareSprites(sprites, false)
+	items, sources, trimByID, err := prepareSpritesWithOptions(sprites, Options{})
 	if err != nil {
 		t.Fatalf("prepareSprites: %v", err)
 	}

@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning][].
 * Optional edge extrusion into reserved sprite padding.
 * Multi-page atlas planning and packing, including sequential callback builds
   and on-demand source loading for single- and multi-page rendering.
-* Optional transparent-border trimming with reversible source geometry
+* Optional transparent-border and exact color-key trimming
+  with reversible source geometry, plus key-to-alpha conversion
   across single- and multi-page packing and build APIs.
 * Optional exact pixel deduplication with explicit aliases
   across single- and multi-page packing and build APIs.

@@ -4,7 +4,10 @@
 
 package atlasforge
 
-import "image"
+import (
+	"image"
+	"image/color"
+)
 
 const (
 	// HeuristicBestShortSideFit minimizes the smaller leftover edge first.
@@ -59,6 +62,10 @@ type Sprite struct {
 
 // Options controls atlas planning behavior.
 type Options struct {
+	// ColorKey optionally trims exact color matches and/or converts them to alpha.
+	// It is applied by image-based APIs, not geometry-only planning.
+	ColorKey *ColorKeyOptions `json:"color_key,omitempty" yaml:"color_key,omitempty"`
+
 	// MinSize is the lower bound for each atlas side candidate.
 	// Plan and compacted PlanPages layouts do not produce smaller dimensions.
 	MinSize int `json:"min_size" yaml:"min_size"`
@@ -106,6 +113,18 @@ type Options struct {
 	Deduplicate bool `json:"deduplicate,omitempty" yaml:"deduplicate,omitempty"`
 }
 
+// ColorKeyOptions configures exact 8-bit color matching in source images.
+type ColorKeyOptions struct {
+	// Color is compared after conversion to the renderer's canonical RGBA8 pixel.
+	Color color.NRGBA `json:"color" yaml:"color"`
+
+	// Trim excludes exact matches from the content bounds without changing pixels.
+	Trim bool `json:"trim,omitempty" yaml:"trim,omitempty"`
+
+	// ToAlpha replaces exact matches with canonical transparent RGBA zero.
+	ToAlpha bool `json:"to_alpha,omitempty" yaml:"to_alpha,omitempty"`
+}
+
 // Atlas combines rendered image and the layout used to produce it.
 type Atlas struct {
 	// Image is the rendered atlas pixels.
@@ -133,6 +152,9 @@ type Layout struct {
 
 // RenderSettings contains pixel operations recorded for reproducible rendering.
 type RenderSettings struct {
+	// ColorKey records image-based color-key operations for reproducible rendering.
+	ColorKey *ColorKeyOptions `json:"color_key,omitempty" yaml:"color_key,omitempty"`
+
 	// Padding is the reserved margin around placements.
 	Padding int `json:"padding,omitempty" yaml:"padding,omitempty"`
 

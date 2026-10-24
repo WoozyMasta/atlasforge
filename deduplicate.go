@@ -70,7 +70,7 @@ func (rows *pixelRows) hash(src image.Image) uint64 {
 	hash.SetSeed(pixelHashSeed)
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		draw.Draw(&rows.first, rows.first.Bounds(), src, image.Pt(bounds.Min.X, y), draw.Src)
+		copyPixelRowRGBA(&rows.first, src, bounds.Min.X, y)
 		_, _ = hash.Write(rowPixels)
 	}
 
@@ -93,20 +93,8 @@ func (rows *pixelRows) equal(a, b image.Image) bool {
 	bPixels := rows.second.Pix[:bBounds.Dx()*4]
 
 	for y := 0; y < aBounds.Dy(); y++ {
-		draw.Draw(
-			&rows.first,
-			rows.first.Bounds(),
-			a,
-			image.Pt(aBounds.Min.X, aBounds.Min.Y+y),
-			draw.Src,
-		)
-		draw.Draw(
-			&rows.second,
-			rows.second.Bounds(),
-			b,
-			image.Pt(bBounds.Min.X, bBounds.Min.Y+y),
-			draw.Src,
-		)
+		copyPixelRowRGBA(&rows.first, a, aBounds.Min.X, aBounds.Min.Y+y)
+		copyPixelRowRGBA(&rows.second, b, bBounds.Min.X, bBounds.Min.Y+y)
 
 		if !bytes.Equal(aPixels, bPixels) {
 			return false
@@ -114,6 +102,25 @@ func (rows *pixelRows) equal(a, b image.Image) bool {
 	}
 
 	return true
+}
+
+// copyPixelRowRGBA keeps legacy draw paths and avoids interface allocations for key views.
+func copyPixelRowRGBA(dst *image.RGBA, src image.Image, sourceX, sourceY int) {
+	if view, ok := src.(colorKeyImageView); ok {
+		pixels := dst.Pix[:view.Bounds().Dx()*4]
+		for x := range view.Bounds().Dx() {
+			pixel := view.RGBAAt(sourceX+x, sourceY)
+			offset := x * 4
+			pixels[offset] = pixel.R
+			pixels[offset+1] = pixel.G
+			pixels[offset+2] = pixel.B
+			pixels[offset+3] = pixel.A
+		}
+
+		return
+	}
+
+	draw.Draw(dst, dst.Bounds(), src, image.Pt(sourceX, sourceY), draw.Src)
 }
 
 // ensure resizes one reusable buffer only when a wider source is encountered.
@@ -131,6 +138,23 @@ func deduplicatePreparedSprites(
 	trim bool,
 	hashImage imageHashFunc,
 ) ([]Item, []aliasRelation) {
+	return deduplicatePreparedSpritesWithOptions(
+		items,
+		sourceMap,
+		trimByID,
+		Options{TrimTransparent: trim},
+		hashImage,
+	)
+}
+
+// deduplicatePreparedSpritesWithOptions compares pixels after requested image filters.
+func deduplicatePreparedSpritesWithOptions(
+	items []Item,
+	sourceMap map[string]image.Image,
+	trimByID map[string]trimMetadata,
+	opts Options,
+	hashImage imageHashFunc,
+) ([]Item, []aliasRelation) {
 	canonicalItems := make([]Item, 0, len(items))
 	aliases := make([]aliasRelation, 0)
 	buckets := make(map[pixelHashKey][]inMemoryCandidate, len(items))
@@ -139,7 +163,7 @@ func deduplicatePreparedSprites(
 	for i := range items {
 		item := items[i]
 		source := sourceMap[item.ID]
-		view := sourceViewForItem(item, source, trim, trimByID)
+		view := sourceViewForItemWithOptions(item, source, opts, trimByID)
 		var hash uint64
 		if hashImage == nil {
 			hash = rows.hash(view)
@@ -204,15 +228,15 @@ func prepareDeduplicatedItems(
 		width, height := item.Width, item.Height
 		metadata := trimMetadata{}
 		hasMetadata := false
-		if opts.TrimTransparent {
-			width, height, metadata, hasMetadata = trimmedSourceGeometry(source)
+		if opts.TrimTransparent || opts.ColorKey != nil && opts.ColorKey.Trim {
+			width, height, metadata, hasMetadata = trimmedSourceGeometryWithOptions(source, opts)
 			if hasMetadata {
 				trimByID[item.ID] = metadata
 			}
 		}
 
 		physicalItem := Item{ID: item.ID, Width: width, Height: height}
-		view := sourceViewForGeometry(physicalItem, source, opts.TrimTransparent, metadata, hasMetadata)
+		view := sourceViewForGeometryWithOptions(physicalItem, source, opts, metadata, hasMetadata)
 		var hash uint64
 		if hashImage == nil {
 			hash = rows.hash(view)
@@ -246,7 +270,7 @@ func prepareDeduplicatedItems(
 				)
 			}
 
-			canonicalView := sourceViewForRecord(canonicalSource, candidate, opts.TrimTransparent)
+			canonicalView := sourceViewForRecordWithOptions(canonicalSource, candidate, opts)
 			if rows.equal(view, canonicalView) {
 				canonicalID = candidate.id
 				break
@@ -273,21 +297,27 @@ func prepareDeduplicatedItems(
 }
 
 // sourceViewForItem returns the exact source view used to compare one item.
-func sourceViewForItem(
+func sourceViewForItemWithOptions(
 	item Item,
 	source image.Image,
-	trim bool,
+	opts Options,
 	trimByID map[string]trimMetadata,
 ) image.Image {
 	if metadata, ok := trimByID[item.ID]; ok {
-		return sourceViewForGeometry(item, source, trim, metadata, true)
+		return sourceViewForGeometryWithOptions(item, source, opts, metadata, true)
 	}
 
-	return sourceViewForGeometry(item, source, trim, trimMetadata{}, false)
+	return sourceViewForGeometryWithOptions(item, source, opts, trimMetadata{}, false)
 }
 
-// sourceViewForGeometry applies one crop record without allocating metadata maps.
-func sourceViewForGeometry(item Item, source image.Image, trim bool, metadata trimMetadata, hasMetadata bool) image.Image {
+// sourceViewForGeometryWithOptions applies one crop and pixel transform without map allocations.
+func sourceViewForGeometryWithOptions(
+	item Item,
+	source image.Image,
+	opts Options,
+	metadata trimMetadata,
+	hasMetadata bool,
+) image.Image {
 	placement := Placement{
 		ID:     item.ID,
 		Width:  item.Width,
@@ -300,11 +330,11 @@ func sourceViewForGeometry(item Item, source image.Image, trim bool, metadata tr
 		placement.OffsetY = metadata.offsetY
 	}
 
-	return sourceForPlacement(placement, source, trim)
+	return sourceForPlacementWithColorKey(placement, source, opts.TrimTransparent, opts.ColorKey)
 }
 
-// sourceViewForRecord restores a candidate's crop from its original source.
-func sourceViewForRecord(source image.Image, record dedupRecord, trim bool) image.Image {
+// sourceViewForRecordWithOptions restores a candidate crop and pixel transform.
+func sourceViewForRecordWithOptions(source image.Image, record dedupRecord, opts Options) image.Image {
 	placement := Placement{
 		ID:     record.id,
 		Width:  record.item.Width,
@@ -317,5 +347,5 @@ func sourceViewForRecord(source image.Image, record dedupRecord, trim bool) imag
 		placement.OffsetY = record.trim.offsetY
 	}
 
-	return sourceForPlacement(placement, source, trim)
+	return sourceForPlacementWithColorKey(placement, source, opts.TrimTransparent, opts.ColorKey)
 }

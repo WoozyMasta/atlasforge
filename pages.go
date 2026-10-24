@@ -83,24 +83,24 @@ func PlanPages(items []Item, opts Options) ([]Layout, error) {
 // It retains all source images and all rendered atlas images in memory.
 // An empty input returns a non-nil empty slice.
 func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
-	if opts.TrimTransparent || opts.Deduplicate {
+	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil {
 		if err := validateOptions(opts); err != nil {
 			return nil, err
 		}
 	}
 
-	items, sourceMap, trimByID, err := prepareSprites(sprites, opts.TrimTransparent)
+	items, sourceMap, trimByID, err := prepareSpritesWithOptions(sprites, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	var aliases []aliasRelation
 	if opts.Deduplicate {
-		items, aliases = deduplicatePreparedSprites(
+		items, aliases = deduplicatePreparedSpritesWithOptions(
 			items,
 			sourceMap,
 			trimByID,
-			opts.TrimTransparent,
+			opts,
 			nil,
 		)
 	}
@@ -151,7 +151,7 @@ func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsu
 	var aliases []aliasRelation
 	var err error
 
-	if opts.TrimTransparent || opts.Deduplicate {
+	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil && opts.ColorKey.Trim {
 		if err := validateOptions(opts); err != nil {
 			return err
 		}
@@ -164,8 +164,8 @@ func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsu
 			if err != nil {
 				return err
 			}
-		} else if opts.TrimTransparent {
-			items, trimByID, err = prepareTrimmedItems(items, load)
+		} else if opts.TrimTransparent || opts.ColorKey != nil && opts.ColorKey.Trim {
+			items, trimByID, err = prepareTrimmedItems(items, opts, load)
 			if err != nil {
 				return err
 			}
