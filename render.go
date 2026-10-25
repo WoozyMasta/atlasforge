@@ -92,15 +92,46 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 	if layout.Render != nil {
 		extrude = layout.Render.Extrude
 	}
+
 	normalizeTransparent := layout.Render != nil && layout.Render.TrimTransparent
 	var colorKey *ColorKeyOptions
 	if layout.Render != nil {
 		colorKey = layout.Render.ColorKey
 	}
 
+	groups := make(map[int][]Placement)
+	for i := range layout.Placements {
+		placement := layout.Placements[i]
+		if placement.AliasOf == "" && placement.OverlapGroup > 0 {
+			groups[placement.OverlapGroup] = append(groups[placement.OverlapGroup], placement)
+		}
+	}
+
+	blocks := make(map[int]OverlapBlock, len(layout.OverlapBlocks))
+	for _, block := range layout.OverlapBlocks {
+		blocks[block.ID] = block
+	}
+
+	renderedGroups := make(map[int]struct{}, len(groups))
+
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
 		if placement.AliasOf != "" {
+			continue
+		}
+
+		if placement.OverlapGroup > 0 {
+			if _, rendered := renderedGroups[placement.OverlapGroup]; rendered {
+				continue
+			}
+
+			members := groups[placement.OverlapGroup]
+			block := blocks[placement.OverlapGroup]
+			if err := renderOverlapBlock(layout, atlas, block, members, sourceMap, load, extrude); err != nil {
+				return nil, err
+			}
+
+			renderedGroups[placement.OverlapGroup] = struct{}{}
 			continue
 		}
 
@@ -152,6 +183,140 @@ func renderPrepared(layout *Layout, sourceMap map[string]image.Image, load Image
 	}
 
 	return atlas, nil
+}
+
+// renderOverlapBlock fills, validates, draws, and extrudes one N-member zone.
+func renderOverlapBlock(
+	layout *Layout,
+	atlas *image.RGBA,
+	block OverlapBlock,
+	members []Placement,
+	sourceMap map[string]image.Image,
+	load ImageLoader,
+	extrude int,
+) error {
+	blockBounds := image.Rect(block.X, block.Y, block.X+block.Width, block.Y+block.Height)
+	draw.Draw(atlas, blockBounds, &image.Uniform{C: unpackRGBA8(block.Color)}, image.Point{}, draw.Src)
+	area, err := checkedArea(int64(block.Width), int64(block.Height))
+
+	if err != nil || area > int64(int(^uint(0)>>1))-7 {
+		return fmt.Errorf("%w: overlap block %d coverage size overflows", ErrInvalidLayout, block.ID)
+	}
+
+	coverage := make([]byte, int((area+7)/8))
+	padding := 0
+	var colorKey *ColorKeyOptions
+	trimTransparent := false
+	if layout.Render != nil {
+		padding = layout.Render.Padding
+		trimTransparent = layout.Render.TrimTransparent
+		colorKey = layout.Render.ColorKey
+	}
+
+	for _, placement := range members {
+		source, loadErr := loadRenderSource(placement, sourceMap, load)
+		if loadErr != nil {
+			return loadErr
+		}
+
+		view := sourceForPlacementWithColorKey(placement, source, trimTransparent, colorKey)
+		if view.Bounds().Dx() != placement.Width || view.Bounds().Dy() != placement.Height {
+			return fmt.Errorf(
+				"%w: overlap block %d source %q has wrong prepared size",
+				ErrSourceSizeMismatch, block.ID, placement.ID,
+			)
+		}
+
+		for side := overlapLeft; side <= overlapBottom; side++ {
+			depth, edgeColor := scanUniformBand(view, side)
+			minimumDepth := 1
+			if side == overlapLeft || side == overlapRight {
+				if block.ShareX > 0 {
+					minimumDepth = block.ShareX + padding
+				}
+			} else if block.ShareY > 0 {
+				minimumDepth = block.ShareY + padding
+			}
+			if depth < minimumDepth || edgeColor != block.Color {
+				return fmt.Errorf(
+					"%w: overlap block %d source %q edge is incompatible",
+					ErrInvalidLayout, block.ID, placement.ID,
+				)
+			}
+		}
+
+		bounds := view.Bounds()
+		for sourceY := range placement.Height {
+			for sourceX := range placement.Width {
+				destinationX, destinationY := placement.X+sourceX, placement.Y+sourceY
+				if placement.Rotated {
+					destinationX = placement.X + placement.Height - 1 - sourceY
+					destinationY = placement.Y + sourceX
+				}
+
+				pixel := canonicalImageRGBA8(view, bounds.Min.X+sourceX, bounds.Min.Y+sourceY)
+				localX, localY := destinationX-block.X, destinationY-block.Y
+				index := localY*block.Width + localX
+				maskIndex, maskBit := index>>3, byte(1<<uint(index&7))
+				pixelOffset := (destinationY-atlas.Rect.Min.Y)*atlas.Stride + (destinationX-atlas.Rect.Min.X)*4
+
+				if coverage[maskIndex]&maskBit != 0 {
+					if atlas.Pix[pixelOffset] != pixel.R ||
+						atlas.Pix[pixelOffset+1] != pixel.G ||
+						atlas.Pix[pixelOffset+2] != pixel.B ||
+						atlas.Pix[pixelOffset+3] != pixel.A {
+						return fmt.Errorf(
+							"%w: overlap block %d pixels differ at (%d,%d)",
+							ErrInvalidLayout, block.ID, destinationX, destinationY,
+						)
+					}
+				} else {
+					atlas.Pix[pixelOffset] = pixel.R
+					atlas.Pix[pixelOffset+1] = pixel.G
+					atlas.Pix[pixelOffset+2] = pixel.B
+					atlas.Pix[pixelOffset+3] = pixel.A
+					coverage[maskIndex] |= maskBit
+				}
+			}
+		}
+	}
+	if extrude > 0 {
+		extrudeRGBA(
+			atlas,
+			block.X,
+			block.Y,
+			block.Width,
+			block.Height,
+			extrude,
+		)
+	}
+
+	return nil
+}
+
+// loadRenderSource obtains one placement image and checks its source dimensions.
+func loadRenderSource(
+	placement Placement,
+	sourceMap map[string]image.Image,
+	load ImageLoader,
+) (image.Image, error) {
+	source := sourceMap[placement.ID]
+	if load != nil {
+		var err error
+		source, err = load(placement.ID)
+		if err != nil {
+			return nil, fmt.Errorf("load source %q: %w", placement.ID, err)
+		}
+	}
+
+	if isNilImage(source) {
+		return nil, fmt.Errorf("%w: ID=%q", ErrSourceImageMissing, placement.ID)
+	}
+	if err := validatePlacementSource(placement, source); err != nil {
+		return nil, err
+	}
+
+	return source, nil
 }
 
 // drawColorKeyViewInto writes converted pixels directly to the atlas buffer.

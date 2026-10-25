@@ -249,6 +249,17 @@ before and after sharing their packed rectangles.
 
 ![Duplicate sprites sharing packed placements](examples/dedup.png)
 
+### Solid edge overlap
+
+`Overlap` packs sprites together when
+all four edges have matching solid RGBA8 bands.
+This lets compatible sprites share pixels and reduces unused atlas space.
+Padding is preserved around each group.
+Available in `Pack`, `PackPages`, and `BuildPages`;
+geometry-only planning does not use overlap.
+
+![Sprites overlap zones](examples/overlap.png)
+
 ### Multi-page packing
 
 `PlanPages`, `PackPages`, and `BuildPages` split inputs

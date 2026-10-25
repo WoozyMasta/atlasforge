@@ -111,6 +111,10 @@ type Options struct {
 	// Deduplicate aliases sprites with identical rendered pixels.
 	// It is applied by image-based packing APIs, not geometry-only planning.
 	Deduplicate bool `json:"deduplicate,omitempty" yaml:"deduplicate,omitempty"`
+
+	// Overlap packs compatible uniform-edge sprites into multi-member zones.
+	// Geometry-only planning does not inspect pixels or form overlap groups.
+	Overlap bool `json:"overlap,omitempty" yaml:"overlap,omitempty"`
 }
 
 // ColorKeyOptions configures exact 8-bit color matching in source images.
@@ -143,11 +147,44 @@ type Layout struct {
 	// Order follows internal packing workflow, not input order guarantees.
 	Placements []Placement `json:"placements" yaml:"placements"`
 
+	// OverlapBlocks describes intentional N-member pixel-sharing zones.
+	OverlapBlocks []OverlapBlock `json:"overlap_blocks,omitempty" yaml:"overlap_blocks,omitempty"`
+
 	// Width is the final atlas width in pixels.
 	Width int `json:"width" yaml:"width"`
 
 	// Height is the final atlas height in pixels.
 	Height int `json:"height" yaml:"height"`
+}
+
+// OverlapBlock describes one independently placed N-member overlap zone.
+type OverlapBlock struct {
+	// ID links canonical placements through Placement.OverlapGroup.
+	ID int `json:"id" yaml:"id"`
+
+	// X is the physical block's atlas X coordinate after optional rotation.
+	X int `json:"x" yaml:"x"`
+
+	// Y is the physical block's atlas Y coordinate after optional rotation.
+	Y int `json:"y" yaml:"y"`
+
+	// Width is the physical block width after optional rotation.
+	Width int `json:"width" yaml:"width"`
+
+	// Height is the physical block height after optional rotation.
+	Height int `json:"height" yaml:"height"`
+
+	// ShareX is the shared width before global rotation.
+	ShareX int `json:"share_x" yaml:"share_x"`
+
+	// ShareY is the shared height before global rotation.
+	ShareY int `json:"share_y" yaml:"share_y"`
+
+	// Color is the packed canonical RGBA8 color used for empty zone pixels.
+	Color uint32 `json:"color" yaml:"color"`
+
+	// Rotated reports clockwise rotation of the entire zone.
+	Rotated bool `json:"rotated,omitempty" yaml:"rotated,omitempty"`
 }
 
 // RenderSettings contains pixel operations recorded for reproducible rendering.
@@ -199,6 +236,9 @@ type Placement struct {
 
 	// Rotated reports clockwise 90-degree placement during rendering.
 	Rotated bool `json:"rotated" yaml:"rotated"`
+
+	// OverlapGroup identifies a canonical placement's explicit overlap zone.
+	OverlapGroup int `json:"overlap_group,omitempty" yaml:"overlap_group,omitempty"`
 }
 
 // Item describes a rectangular payload for layout planning.

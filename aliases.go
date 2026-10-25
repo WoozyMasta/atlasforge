@@ -6,6 +6,7 @@ package atlasforge
 
 import (
 	"fmt"
+	"image"
 	"slices"
 )
 
@@ -52,6 +53,19 @@ func validateAliases(layout *Layout) error {
 	}
 
 	canonicalRects := make([]occupiedRect, 0, len(layout.Placements))
+	groups := make(map[int][]Placement)
+	blocks := make(map[int]OverlapBlock, len(layout.OverlapBlocks))
+	for _, block := range layout.OverlapBlocks {
+		if block.ID <= 0 {
+			return fmt.Errorf("%w: overlap block ID must be positive", ErrInvalidLayout)
+		}
+		if _, exists := blocks[block.ID]; exists {
+			return fmt.Errorf("%w: duplicate overlap block ID %d", ErrInvalidLayout, block.ID)
+		}
+
+		blocks[block.ID] = block
+	}
+
 	for i := range layout.Placements {
 		placement := layout.Placements[i]
 		if placement.AliasOf != "" {
@@ -87,27 +101,72 @@ func validateAliases(layout *Layout) error {
 			continue
 		}
 
-		width, height := placement.Width, placement.Height
-		if placement.Rotated {
-			width, height = height, width
+		if placement.OverlapGroup < 0 {
+			return fmt.Errorf("%w: negative overlap group for %q", ErrInvalidLayout, placement.ID)
 		}
 
-		if padding > placement.X || padding > placement.Y ||
-			padding > layout.Width-placement.X-width || padding > layout.Height-placement.Y-height {
-			return fmt.Errorf(
-				"%w: reserved padding exceeds atlas bounds: ID=%q Padding=%d",
-				ErrInvalidLayout,
-				placement.ID,
-				padding,
-			)
+		if placement.OverlapGroup > 0 {
+			groups[placement.OverlapGroup] = append(groups[placement.OverlapGroup], placement)
+			continue
+		}
+
+		reserved, err := paddedPlacementBounds(layout, placement, padding)
+		if err != nil {
+			return err
 		}
 
 		canonicalRects = append(canonicalRects, occupiedRect{
 			placementID: placement.ID,
-			minX:        placement.X - padding,
-			minY:        placement.Y - padding,
-			maxX:        placement.X + width + padding,
-			maxY:        placement.Y + height + padding,
+			minX:        reserved.Min.X,
+			minY:        reserved.Min.Y,
+			maxX:        reserved.Max.X,
+			maxY:        reserved.Max.Y,
+		})
+	}
+
+	if len(groups) != len(blocks) {
+		return fmt.Errorf("%w: overlap block metadata/member count mismatch", ErrInvalidLayout)
+	}
+	if len(groups) > 0 && layout.Render == nil {
+		return fmt.Errorf("%w: overlap blocks require render settings with recorded padding", ErrInvalidLayout)
+	}
+
+	groupIDs := make([]int, 0, len(groups))
+	for groupID := range groups {
+		groupIDs = append(groupIDs, groupID)
+	}
+
+	slices.Sort(groupIDs)
+	for _, groupID := range groupIDs {
+		members := groups[groupID]
+		if len(members) < 2 {
+			return fmt.Errorf(
+				"%w: overlap group %d has %d canonical members, want at least 2",
+				ErrInvalidLayout,
+				groupID,
+				len(members),
+			)
+		}
+
+		block, exists := blocks[groupID]
+		if !exists {
+			return fmt.Errorf("%w: overlap group %d has no block metadata", ErrInvalidLayout, groupID)
+		}
+		bounds, err := validateOverlapBlock(block, members)
+		if err != nil {
+			return err
+		}
+		reserved, err := paddedBounds(layout, bounds, padding, fmt.Sprintf("overlap block %d", groupID))
+		if err != nil {
+			return err
+		}
+
+		canonicalRects = append(canonicalRects, occupiedRect{
+			placementID: fmt.Sprintf("overlap block %d", groupID),
+			minX:        reserved.Min.X,
+			minY:        reserved.Min.Y,
+			maxX:        reserved.Max.X,
+			maxY:        reserved.Max.Y,
 		})
 	}
 
@@ -162,6 +221,129 @@ func validateAliases(layout *Layout) error {
 	}
 
 	return nil
+}
+
+// validateOverlapBlock checks block bounds and non-overlapping reduced rectangles.
+func validateOverlapBlock(block OverlapBlock, members []Placement) (image.Rectangle, error) {
+	maxInt := int(^uint(0) >> 1)
+	if block.Width <= 0 || block.Height <= 0 ||
+		block.X < 0 || block.Y < 0 ||
+		block.X > maxInt-block.Width || block.Y > maxInt-block.Height ||
+		block.ShareX < 0 || block.ShareY < 0 ||
+		block.ShareX == 0 && block.ShareY == 0 {
+		return image.Rectangle{}, fmt.Errorf(
+			"%w: overlap block %d has invalid geometry or shares",
+			ErrInvalidLayout, block.ID,
+		)
+	}
+
+	blockBounds := image.Rect(block.X, block.Y, block.X+block.Width, block.Y+block.Height)
+	var union image.Rectangle
+	workRects := make([]image.Rectangle, 0, len(members))
+
+	for index, member := range members {
+		if member.Rotated != block.Rotated ||
+			block.ShareX >= member.Width ||
+			block.ShareY >= member.Height {
+			return image.Rectangle{}, fmt.Errorf(
+				"%w: overlap block %d member %q has invalid rotation or share",
+				ErrInvalidLayout, block.ID, member.ID,
+			)
+		}
+
+		memberBounds := placementContentBounds(member)
+		if blockBounds.Intersect(memberBounds) != memberBounds {
+			return image.Rectangle{}, fmt.Errorf(
+				"%w: overlap block %d does not contain member %q",
+				ErrInvalidLayout, block.ID, member.ID,
+			)
+		}
+
+		if index == 0 {
+			union = memberBounds
+		} else {
+			union = union.Union(memberBounds)
+		}
+
+		localX, localY := member.X-block.X, member.Y-block.Y
+		workWidth := member.Width - block.ShareX
+		workHeight := member.Height - block.ShareY
+		if block.Rotated {
+			workWidth, workHeight = workHeight, workWidth
+		}
+
+		zoneWidth, zoneHeight := block.Width, block.Height
+		memberWidth, memberHeight := member.Width, member.Height
+		if block.Rotated {
+			memberWidth, memberHeight = memberHeight, memberWidth
+		}
+
+		if localX < 0 || localY < 0 || localX > zoneWidth-memberWidth ||
+			localY > zoneHeight-memberHeight {
+			return image.Rectangle{}, fmt.Errorf(
+				"%w: overlap block %d member %q transform is invalid",
+				ErrInvalidLayout, block.ID, member.ID,
+			)
+		}
+
+		workX := localX
+		if block.Rotated {
+			workX += block.ShareY
+		}
+		workRects = append(workRects, image.Rect(
+			workX,
+			localY,
+			workX+workWidth,
+			localY+workHeight,
+		))
+	}
+
+	if union != blockBounds {
+		return image.Rectangle{}, fmt.Errorf(
+			"%w: overlap block %d bounds differ from member union",
+			ErrInvalidLayout, block.ID,
+		)
+	}
+
+	for i := range workRects {
+		for j := i + 1; j < len(workRects); j++ {
+			if workRects[i].Overlaps(workRects[j]) {
+				return image.Rectangle{}, fmt.Errorf(
+					"%w: overlap block %d reduced members %d and %d intersect: %v and %v (share=%d,%d rotated=%t)",
+					ErrInvalidLayout, block.ID, i, j, workRects[i], workRects[j], block.ShareX, block.ShareY, block.Rotated,
+				)
+			}
+		}
+	}
+
+	return blockBounds, nil
+}
+
+// paddedPlacementBounds returns one canonical placement's padded atlas bounds.
+func paddedPlacementBounds(layout *Layout, placement Placement, padding int) (image.Rectangle, error) {
+	return paddedBounds(layout, placementContentBounds(placement), padding, placement.ID)
+}
+
+// paddedBounds verifies that a physical rectangle and its padding fit in the atlas.
+func paddedBounds(layout *Layout, bounds image.Rectangle, padding int, id string) (image.Rectangle, error) {
+	if bounds.Empty() || padding < 0 ||
+		padding > bounds.Min.X || padding > bounds.Min.Y ||
+		bounds.Max.X > layout.Width || bounds.Max.Y > layout.Height ||
+		padding > layout.Width-bounds.Max.X || padding > layout.Height-bounds.Max.Y {
+		return image.Rectangle{}, fmt.Errorf(
+			"%w: reserved padding exceeds atlas bounds: ID=%q Padding=%d",
+			ErrInvalidLayout,
+			id,
+			padding,
+		)
+	}
+
+	return image.Rect(
+		bounds.Min.X-padding,
+		bounds.Min.Y-padding,
+		bounds.Max.X+padding,
+		bounds.Max.Y+padding,
+	), nil
 }
 
 // appendAliases adds logical placements beside their page's canonical source.
@@ -248,7 +430,7 @@ func appendAliasesAcrossPages(
 func samePlacementGeometry(alias, canonical Placement) bool {
 	return alias.X == canonical.X && alias.Y == canonical.Y &&
 		alias.Width == canonical.Width && alias.Height == canonical.Height &&
-		alias.Rotated == canonical.Rotated
+		alias.Rotated == canonical.Rotated && alias.OverlapGroup == canonical.OverlapGroup
 }
 
 // rectanglesOverlap reports whether two reserved axis-aligned rectangles intersect.

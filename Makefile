@@ -46,6 +46,7 @@ fuzz:
 	$(GO) test -run='^$$' -fuzz='^FuzzPack$$' -fuzztime=$(FUZZ_TIME) .
 	$(GO) test -run='^$$' -fuzz='^FuzzMaxRects$$' -fuzztime=$(FUZZ_TIME) .
 	$(GO) test -run='^$$' -fuzz='^FuzzColorKey$$' -fuzztime=$(FUZZ_TIME) .
+	$(GO) test -run='^$$' -fuzz='^FuzzOverlapZones$$' -fuzztime=$(FUZZ_TIME) .
 
 .PHONY: download verify vet tidy tidy-check fmt fmt-check vulncheck lint lint-fix align align-fix
 

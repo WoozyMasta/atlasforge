@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning][].
   across single- and multi-page packing and build APIs.
 * Optional exact pixel deduplication with explicit aliases
   across single- and multi-page packing and build APIs.
+* Optional exact RGBA8 edge overlap zones that pack multiple compatible sprites
+  as one padded block, with grid and Guillotine local solvers.
 * Image-independent atlas and multi-page utilization, alias,
   rotation and trim statistics reports.
 

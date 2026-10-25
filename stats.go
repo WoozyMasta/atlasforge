@@ -4,7 +4,12 @@
 
 package atlasforge
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"image"
+	"slices"
+)
 
 // PagesStats contains aggregate metrics for a collection of atlas layouts.
 type PagesStats struct {
@@ -33,13 +38,14 @@ type LayoutStats struct {
 	// LogicalCount is the number of sprite IDs represented in the layout.
 	LogicalCount int64 `json:"logical_count" yaml:"logical_count"`
 
-	// PhysicalCount is the number of canonical packed rectangles.
+	// PhysicalCount is the number of canonical sprite placements.
+	// An overlap group counts two placements but occupies one planner item.
 	PhysicalCount int64 `json:"physical_count" yaml:"physical_count"`
 
 	// AliasCount is the number of placements sharing canonical rectangles.
 	AliasCount int64 `json:"alias_count" yaml:"alias_count"`
 
-	// ContentArea is the summed area of canonical sprite rectangles.
+	// ContentArea is the union area of canonical sprite rectangles.
 	ContentArea int64 `json:"content_area" yaml:"content_area"`
 
 	// ReservedArea is the summed canonical area including the requested padding.
@@ -65,6 +71,18 @@ type LayoutStats struct {
 	// PhysicalTrimSavedArea sums removed source area for canonical placements.
 	// It does not measure atlas pixel or encoded file savings.
 	PhysicalTrimSavedArea int64 `json:"physical_trim_saved_area" yaml:"physical_trim_saved_area"`
+
+	// OverlapGroupCount counts physical N-member overlap blocks.
+	OverlapGroupCount int64 `json:"overlap_group_count,omitempty" yaml:"overlap_group_count,omitempty"`
+
+	// OverlapGroupMembers counts canonical placements inside overlap blocks.
+	OverlapGroupMembers int64 `json:"overlap_group_members,omitempty" yaml:"overlap_group_members,omitempty"`
+
+	// OverlapBlockArea sums physical bounding areas of overlap blocks.
+	OverlapBlockArea int64 `json:"overlap_block_area,omitempty" yaml:"overlap_block_area,omitempty"`
+
+	// OverlapSharedPixels counts member pixels covered more than once.
+	OverlapSharedPixels int64 `json:"overlap_shared_pixels,omitempty" yaml:"overlap_shared_pixels,omitempty"`
 }
 
 // statsSum identifies one non-negative aggregate field.
@@ -106,6 +124,7 @@ func AnalyzeLayout(layout *Layout, padding int) (LayoutStats, error) {
 	stats := LayoutStats{
 		LogicalCount: int64(len(layout.Placements)),
 	}
+	groups := make(map[int][]Placement)
 	var err error
 	stats.AtlasArea, err = checkedArea(int64(layout.Width), int64(layout.Height))
 	if err != nil {
@@ -122,51 +141,12 @@ func AnalyzeLayout(layout *Layout, padding int) (LayoutStats, error) {
 			if placement.Rotated {
 				stats.PhysicalRotationCount++
 			}
-
-			contentArea, areaErr := checkedArea(int64(placement.Width), int64(placement.Height))
-			if areaErr != nil {
-				return LayoutStats{}, fmt.Errorf(
-					"%w: content area for %q: %v",
-					ErrInvalidLayout, placement.ID, areaErr,
-				)
-			}
-
-			stats.ContentArea, err = checkedAdd(stats.ContentArea, contentArea)
-			if err != nil {
-				return LayoutStats{}, fmt.Errorf(
-					"%w: total content area: %v",
-					ErrInvalidLayout, err,
-				)
-			}
-
-			reservedWidth, widthErr := checkedPaddedDimension(int64(placement.Width), int64(padding))
-			if widthErr != nil {
-				return LayoutStats{}, fmt.Errorf(
-					"%w: reserved width for %q: %v",
-					ErrInvalidLayout, placement.ID, widthErr,
-				)
-			}
-
-			reservedHeight, heightErr := checkedPaddedDimension(int64(placement.Height), int64(padding))
-			if heightErr != nil {
-				return LayoutStats{}, fmt.Errorf(
-					"%w: reserved height for %q: %v", ErrInvalidLayout, placement.ID, heightErr)
-			}
-
-			reservedArea, areaErr := checkedArea(reservedWidth, reservedHeight)
-			if areaErr != nil {
-				return LayoutStats{}, fmt.Errorf(
-					"%w: reserved area for %q: %v",
-					ErrInvalidLayout, placement.ID, areaErr,
-				)
-			}
-
-			stats.ReservedArea, err = checkedAdd(stats.ReservedArea, reservedArea)
-			if err != nil {
-				return LayoutStats{}, fmt.Errorf(
-					"%w: total reserved area: %v",
-					ErrInvalidLayout, err,
-				)
+			if placement.OverlapGroup > 0 {
+				groups[placement.OverlapGroup] = append(groups[placement.OverlapGroup], placement)
+			} else {
+				if err := addPlacementAreas(&stats, placement, padding); err != nil {
+					return LayoutStats{}, err
+				}
 			}
 		}
 
@@ -197,11 +177,204 @@ func AnalyzeLayout(layout *Layout, padding int) (LayoutStats, error) {
 		}
 	}
 
+	if err := addOverlapAreas(&stats, groups, layout.OverlapBlocks, padding); err != nil {
+		return LayoutStats{}, err
+	}
+
 	stats.AliasCount = stats.LogicalCount - stats.PhysicalCount
 	stats.ContentUtilization = float64(stats.ContentArea) / float64(stats.AtlasArea)
 	stats.ReservedUtilization = float64(stats.ReservedArea) / float64(stats.AtlasArea)
 
 	return stats, nil
+}
+
+// addPlacementAreas accumulates content and reserved areas for one non-group member.
+func addPlacementAreas(stats *LayoutStats, placement Placement, padding int) error {
+	contentArea, err := checkedArea(int64(placement.Width), int64(placement.Height))
+	if err != nil {
+		return fmt.Errorf("%w: content area for %q: %v", ErrInvalidLayout, placement.ID, err)
+	}
+	stats.ContentArea, err = checkedAdd(stats.ContentArea, contentArea)
+	if err != nil {
+		return fmt.Errorf("%w: total content area: %v", ErrInvalidLayout, err)
+	}
+
+	reservedWidth, err := checkedPaddedDimension(int64(placement.Width), int64(padding))
+	if err != nil {
+		return fmt.Errorf("%w: reserved width for %q: %v", ErrInvalidLayout, placement.ID, err)
+	}
+	reservedHeight, err := checkedPaddedDimension(int64(placement.Height), int64(padding))
+	if err != nil {
+		return fmt.Errorf("%w: reserved height for %q: %v", ErrInvalidLayout, placement.ID, err)
+	}
+
+	reservedArea, err := checkedArea(reservedWidth, reservedHeight)
+	if err != nil {
+		return fmt.Errorf("%w: reserved area for %q: %v", ErrInvalidLayout, placement.ID, err)
+	}
+	stats.ReservedArea, err = checkedAdd(stats.ReservedArea, reservedArea)
+	if err != nil {
+		return fmt.Errorf("%w: total reserved area: %v", ErrInvalidLayout, err)
+	}
+
+	return nil
+}
+
+// addOverlapAreas accumulates member unions and one padded bbox per overlap block.
+func addOverlapAreas(stats *LayoutStats, groups map[int][]Placement, blocks []OverlapBlock, padding int) error {
+	groupIDs := make([]int, 0, len(groups))
+	for groupID := range groups {
+		groupIDs = append(groupIDs, groupID)
+	}
+	slices.Sort(groupIDs)
+	blockByID := make(map[int]OverlapBlock, len(blocks))
+	for _, block := range blocks {
+		blockByID[block.ID] = block
+	}
+
+	for _, groupID := range groupIDs {
+		members := groups[groupID]
+		block, exists := blockByID[groupID]
+		if !exists || len(members) < 2 {
+			return fmt.Errorf("%w: overlap group %d metadata or members are missing", ErrInvalidLayout, groupID)
+		}
+		rectangles := make([]image.Rectangle, 0, len(members))
+		var memberArea int64
+		for _, member := range members {
+			area, err := checkedArea(int64(member.Width), int64(member.Height))
+			if err != nil {
+				return fmt.Errorf("%w: overlap member area: %v", ErrInvalidLayout, err)
+			}
+
+			memberArea, err = checkedAdd(memberArea, area)
+			if err != nil {
+				return fmt.Errorf("%w: total overlap member area: %v", ErrInvalidLayout, err)
+			}
+
+			rectangles = append(rectangles, placementContentBounds(member))
+		}
+
+		unionArea, err := rectangleUnionArea(rectangles)
+		if err != nil || unionArea > memberArea {
+			return fmt.Errorf("%w: overlap union area is not representable", ErrInvalidLayout)
+		}
+
+		sharedArea := memberArea - unionArea
+		stats.ContentArea, err = checkedAdd(stats.ContentArea, unionArea)
+		if err != nil {
+			return fmt.Errorf("%w: total content area: %v", ErrInvalidLayout, err)
+		}
+
+		stats.OverlapSharedPixels, err = checkedAdd(stats.OverlapSharedPixels, sharedArea)
+		if err != nil {
+			return fmt.Errorf("%w: total shared overlap pixels: %v", ErrInvalidLayout, err)
+		}
+
+		stats.OverlapGroupCount++
+		stats.OverlapGroupMembers, err = checkedAdd(stats.OverlapGroupMembers, int64(len(members)))
+		if err != nil {
+			return fmt.Errorf("%w: total overlap members: %v", ErrInvalidLayout, err)
+		}
+
+		blockArea, err := checkedArea(int64(block.Width), int64(block.Height))
+		if err != nil {
+			return fmt.Errorf("%w: overlap block area: %v", ErrInvalidLayout, err)
+		}
+
+		stats.OverlapBlockArea, err = checkedAdd(stats.OverlapBlockArea, blockArea)
+		if err != nil {
+			return fmt.Errorf("%w: total overlap block area: %v", ErrInvalidLayout, err)
+		}
+
+		reservedWidth, err := checkedPaddedDimension(int64(block.Width), int64(padding))
+		if err != nil {
+			return fmt.Errorf("%w: overlap group reserved width: %v", ErrInvalidLayout, err)
+		}
+
+		reservedHeight, err := checkedPaddedDimension(int64(block.Height), int64(padding))
+		if err != nil {
+			return fmt.Errorf("%w: overlap group reserved height: %v", ErrInvalidLayout, err)
+		}
+
+		reservedArea, err := checkedArea(reservedWidth, reservedHeight)
+		if err != nil {
+			return fmt.Errorf("%w: overlap group reserved area: %v", ErrInvalidLayout, err)
+		}
+
+		stats.ReservedArea, err = checkedAdd(stats.ReservedArea, reservedArea)
+		if err != nil {
+			return fmt.Errorf("%w: total reserved area: %v", ErrInvalidLayout, err)
+		}
+	}
+
+	return nil
+}
+
+// rectangleUnionArea sweeps rectangle Y boundaries and unions X intervals per slab.
+func rectangleUnionArea(rectangles []image.Rectangle) (int64, error) {
+	if len(rectangles) == 0 {
+		return 0, nil
+	}
+
+	boundaries := make([]int, 0, len(rectangles)*2)
+	for _, rectangle := range rectangles {
+		if rectangle.Empty() {
+			return 0, errors.New("empty rectangle in overlap union")
+		}
+
+		boundaries = append(boundaries, rectangle.Min.Y, rectangle.Max.Y)
+	}
+
+	slices.Sort(boundaries)
+	boundaries = slices.Compact(boundaries)
+	var union int64
+
+	for index := 0; index+1 < len(boundaries); index++ {
+		top, bottom := boundaries[index], boundaries[index+1]
+		if top == bottom {
+			continue
+		}
+
+		intervals := make([][2]int, 0, len(rectangles))
+		for _, rectangle := range rectangles {
+			if rectangle.Min.Y <= top && rectangle.Max.Y >= bottom {
+				intervals = append(intervals, [2]int{rectangle.Min.X, rectangle.Max.X})
+			}
+		}
+
+		slices.SortFunc(intervals, func(a, b [2]int) int {
+			if a[0] != b[0] {
+				return a[0] - b[0]
+			}
+			return a[1] - b[1]
+		})
+
+		var coveredWidth int64
+		if len(intervals) > 0 {
+			left, right := intervals[0][0], intervals[0][1]
+			for _, interval := range intervals[1:] {
+				if interval[0] > right {
+					coveredWidth += int64(right - left)
+					left, right = interval[0], interval[1]
+				} else {
+					right = max(right, interval[1])
+				}
+			}
+			coveredWidth += int64(right - left)
+		}
+
+		slabArea, err := checkedArea(coveredWidth, int64(bottom-top))
+		if err != nil {
+			return 0, err
+		}
+
+		union, err = checkedAdd(union, slabArea)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	return union, nil
 }
 
 // AnalyzePages calculates aggregate statistics without averaging page ratios.
@@ -261,6 +434,10 @@ func addLayoutStats(total *LayoutStats, page LayoutStats) error {
 		{name: "logical rotations", total: &total.LogicalRotationCount, value: page.LogicalRotationCount},
 		{name: "logical trim area", total: &total.LogicalTrimSavedArea, value: page.LogicalTrimSavedArea},
 		{name: "physical trim area", total: &total.PhysicalTrimSavedArea, value: page.PhysicalTrimSavedArea},
+		{name: "overlap groups", total: &total.OverlapGroupCount, value: page.OverlapGroupCount},
+		{name: "overlap members", total: &total.OverlapGroupMembers, value: page.OverlapGroupMembers},
+		{name: "overlap block area", total: &total.OverlapBlockArea, value: page.OverlapBlockArea},
+		{name: "shared overlap pixels", total: &total.OverlapSharedPixels, value: page.OverlapSharedPixels},
 	}
 
 	for _, field := range fields {

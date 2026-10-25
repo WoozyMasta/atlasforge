@@ -7,6 +7,7 @@ package atlasforge
 import (
 	"errors"
 	"fmt"
+	"image"
 )
 
 // PlanPages splits items across deterministic atlas layouts.
@@ -79,11 +80,11 @@ func PlanPages(items []Item, opts Options) ([]Layout, error) {
 
 // PackPages plans and renders sprites across one or more atlases.
 //
-// With TrimTransparent or Deduplicate enabled, sources are scanned before planning.
+// Trimming, deduplication, color-key processing, or overlap may scan sources before planning.
 // It retains all source images and all rendered atlas images in memory.
 // An empty input returns a non-nil empty slice.
 func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
-	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil {
+	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil || opts.Overlap {
 		if err := validateOptions(opts); err != nil {
 			return nil, err
 		}
@@ -105,7 +106,14 @@ func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
 		)
 	}
 
-	layouts, err := PlanPages(items, opts)
+	layouts, err := planImagePages(items, trimByID, opts, func(id string) (image.Image, error) {
+		source, exists := sourceMap[id]
+		if !exists {
+			return nil, fmt.Errorf("%w: ID=%q", ErrSourceNotFound, id)
+		}
+
+		return source, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +143,7 @@ func PackPages(sprites []Sprite, opts Options) ([]Atlas, error) {
 // BuildPages plans items and renders each page before passing it to consume.
 //
 // It retains layout metadata but not rendered pages or loaded images between callbacks.
-// Trimming and deduplication may load sources more than once before rendering.
+// Trimming, deduplication, color-key processing, and overlap may load sources more than once.
 // A consumer that retains atlas images controls its own memory use.
 //
 // Errors do not roll back pages already passed to the consumer.
@@ -151,7 +159,7 @@ func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsu
 	var aliases []aliasRelation
 	var err error
 
-	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil && opts.ColorKey.Trim {
+	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil && opts.ColorKey.Trim || opts.Overlap {
 		if err := validateOptions(opts); err != nil {
 			return err
 		}
@@ -172,7 +180,7 @@ func BuildPages(items []Item, opts Options, load ImageLoader, consume AtlasConsu
 		}
 	}
 
-	layouts, err := PlanPages(items, opts)
+	layouts, err := planImagePages(items, trimByID, opts, load)
 	if err != nil {
 		return err
 	}

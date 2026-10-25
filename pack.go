@@ -11,7 +11,7 @@ import (
 
 // Pack plans and renders atlas image in a single call.
 func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
-	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil {
+	if opts.TrimTransparent || opts.Deduplicate || opts.ColorKey != nil || opts.Overlap {
 		if err := validateOptions(opts); err != nil {
 			return nil, err
 		}
@@ -33,7 +33,14 @@ func Pack(sprites []Sprite, opts Options) (*Atlas, error) {
 		)
 	}
 
-	layout, err := Plan(items, opts)
+	layout, err := planImageItems(items, trimByID, opts, func(id string) (image.Image, error) {
+		source, exists := sourceMap[id]
+		if !exists {
+			return nil, fmt.Errorf("%w: ID=%q", ErrSourceNotFound, id)
+		}
+
+		return source, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +96,7 @@ func prepareSpritesWithOptions(
 				imageWidth,
 			)
 		}
+
 		if sprite.Height > 0 && sprite.Height != imageHeight {
 			return nil, nil, nil, fmt.Errorf(
 				"%w: sprite %q height override=%d image=%d",
@@ -144,7 +152,7 @@ func prepareSpritesWithOptions(
 // renderSettingsForImageOptions records settings needed by image-based packing.
 func renderSettingsForImageOptions(opts Options) *RenderSettings {
 	settings := renderSettingsForOptions(opts)
-	if !opts.TrimTransparent && opts.ColorKey == nil {
+	if !opts.TrimTransparent && opts.ColorKey == nil && !opts.Overlap {
 		return settings
 	}
 
