@@ -127,7 +127,7 @@ func TestPackPagesKeepsAliasWithCanonicalPage(t *testing.T) {
 		sprites[i] = Sprite{ID: id, Image: img}
 		sources[id] = img
 	}
-	opts := benchmarkPageOptions()
+	opts := pagePackingTestOptions()
 	opts.Deduplicate = true
 	packed, err := PackPages(sprites, opts)
 	if err != nil {
@@ -337,4 +337,15 @@ func solidRGBA(width, height int, pixel color.RGBA) *image.RGBA {
 	}
 
 	return img
+}
+
+// pagePackingTestOptions builds a fixed configuration for 64 sprites per page.
+func pagePackingTestOptions() Options {
+	opts := DefaultOptions()
+	opts.MinSize = 256
+	opts.MaxSize = 256
+	opts.ForceSquare = true
+	opts.Heuristic = HeuristicFirstFit
+
+	return opts
 }
