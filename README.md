@@ -1,6 +1,6 @@
 # atlasforge
 
-`atlasforge` is a Go module for 2D texture atlas packing
+[atlasforge][] is a Go module for 2D texture atlas packing
 (sprite sheet generation).
 It packs many small images into one larger atlas image
 and returns layout metadata with exact rectangle coordinates.
@@ -385,3 +385,7 @@ func main() {
 In placement entries, `rotated: true` means the source sprite
 was placed with a `+90` degree clockwise rotation in the atlas.
 `width` and `height` store original sprite dimensions before rotation.
+
+<!-- links -->
+
+[atlasforge]: https://pkg.go.dev/github.com/woozymasta/atlasforge
