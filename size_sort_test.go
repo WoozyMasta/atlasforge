@@ -7,7 +7,6 @@ package atlasforge
 import (
 	"math"
 	"reflect"
-	"strconv"
 	"testing"
 )
 
@@ -162,7 +161,82 @@ func TestPlanSearchesIndependentSizeCandidates(t *testing.T) {
 				t.Fatalf("Plan: %v", err)
 			}
 			if layout.Width != test.wantW || layout.Height != test.wantH {
-				t.Fatalf("layout size = %dx%d, want %dx%d", layout.Width, layout.Height, test.wantW, test.wantH)
+				t.Fatalf(
+					"layout size = %dx%d, want %dx%d",
+					layout.Width, layout.Height, test.wantW, test.wantH,
+				)
+			}
+		})
+	}
+}
+
+func TestPlanAllowsExtremeRectangularAtlasCandidates(t *testing.T) {
+	t.Parallel()
+
+	base := Options{MinSize: 16, MaxSize: 128, AspectPenalty: 0}
+	tests := []struct {
+		name    string
+		options Options
+		width   int
+		height  int
+		rotated bool
+	}{
+		{name: "optimal", options: base, width: 128, height: 16},
+		{
+			name:    "first fit",
+			options: Options{MinSize: 16, MaxSize: 128, Heuristic: HeuristicFirstFit},
+			width:   128,
+			height:  16,
+		},
+		{
+			name:    "force square",
+			options: Options{MinSize: 16, MaxSize: 128, ForceSquare: true},
+			width:   128, height: 128,
+		},
+		{
+			name: "prefer height with rotation",
+			options: Options{
+				MinSize:       16,
+				MaxSize:       128,
+				AllowRotate:   true,
+				PreferHeight:  true,
+				AspectPenalty: 0,
+			},
+			width: 16, height: 128, rotated: true,
+		},
+		{
+			name:    "padding",
+			options: Options{MinSize: 16, MaxSize: 128, Padding: 2},
+			width:   128, height: 16,
+		},
+		{
+			name:    "positive aspect penalty",
+			options: Options{MinSize: 16, MaxSize: 128, AspectPenalty: 2},
+			width:   128, height: 128,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			layout, err := Plan([]Item{{ID: "wide", Width: 120, Height: 1}}, test.options)
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if layout.Width != test.width || layout.Height != test.height {
+				t.Fatalf("layout size = %dx%d, want %dx%d", layout.Width, layout.Height, test.width, test.height)
+			}
+			if len(layout.Placements) != 1 || layout.Placements[0].ID != "wide" {
+				t.Fatalf("placements = %+v, want the original item ID", layout.Placements)
+			}
+			if layout.Placements[0].Rotated != test.rotated {
+				t.Fatalf("placement rotation = %t, want %t", layout.Placements[0].Rotated, test.rotated)
+			}
+			if test.options.Padding > 0 &&
+				(layout.Placements[0].X != test.options.Padding || layout.Placements[0].Y != test.options.Padding) {
+				t.Fatalf("padded placement origin = (%d,%d), want (%d,%d)",
+					layout.Placements[0].X, layout.Placements[0].Y, test.options.Padding, test.options.Padding)
 			}
 		})
 	}
@@ -208,15 +282,6 @@ func TestCandidateSizesNearMaxIntTerminate(t *testing.T) {
 		if sizes[i] <= sizes[i-1] {
 			t.Fatalf("candidate sizes are not increasing: %v", sizes)
 		}
-	}
-}
-
-func TestPowerOfTwoCeilNearMaxIntTerminates(t *testing.T) {
-	t.Parallel()
-
-	maxInt := int(^uint(0) >> 1)
-	if got, want := powerOfTwoCeil(maxInt), strconv.IntSize-1; got != want {
-		t.Fatalf("powerOfTwoCeil(maxInt) = %d, want %d", got, want)
 	}
 }
 

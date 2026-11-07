@@ -44,8 +44,8 @@ and this project adheres to [Semantic Versioning][].
   and overflowing atlas geometry before rendering.
 * Reject invalid non-finite or negative aspect penalties.
 * Fix MaxRects best-area scoring for large free rectangles.
-* Consider atlas width and height candidates independently
-  within maximum bounds.
+* Consider rectangular atlas candidates up to the configured bounds
+  when `ForceSquare` is disabled.
 * Preserve non-zero source image bounds when rendering sprites.
 
 ## [0.1.0][] - 2026-03-04

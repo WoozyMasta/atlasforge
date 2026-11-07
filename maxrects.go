@@ -343,3 +343,25 @@ func (m *maxRects) pruneFree() {
 func containedIn(a, b mrRect) bool {
 	return a.X >= b.X && a.Y >= b.Y && a.X+a.W <= b.X+b.W && a.Y+a.H <= b.Y+b.H
 }
+
+// removeAt removes a slice element while preserving the order of remaining elements.
+func removeAt[T any](s []T, i int) []T {
+	if i < 0 || i >= len(s) {
+		return s
+	}
+
+	copy(s[i:], s[i+1:])
+	return s[:len(s)-1]
+}
+
+// removeAtSwap removes a slice element without preserving the order of remaining elements.
+func removeAtSwap[T any](s []T, i int) []T {
+	if i < 0 || i >= len(s) {
+		return s
+	}
+
+	last := len(s) - 1
+	s[i] = s[last]
+
+	return s[:last]
+}

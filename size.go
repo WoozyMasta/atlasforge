@@ -6,6 +6,7 @@ package atlasforge
 
 import (
 	"math"
+	"slices"
 )
 
 // findOptimalSize searches candidate atlas sizes after Plan validates arithmetic bounds.
@@ -48,11 +49,7 @@ func findOptimalPlan(items []Item, opts Options) (width, height int, placements 
 			return
 		}
 
-		if opts.ForceSquare {
-			if w != h {
-				return
-			}
-		} else if absPowerDiff(w, h) > 1 {
+		if opts.ForceSquare && w != h {
 			return
 		}
 		if totalArea > w*h {
@@ -81,17 +78,51 @@ func findOptimalPlan(items []Item, opts Options) (width, height int, placements 
 		return bestW, bestH, bestPlacements, bestW > 0
 	}
 
-	if opts.PreferHeight {
-		for _, w := range sizes {
-			for _, h := range sizes {
-				try(w, h)
+	// candidate keeps each feasible atlas size paired with its selection score.
+	type candidate struct {
+		width  int
+		height int
+		score  float64
+	}
+	candidates := make([]candidate, 0, len(sizes)*len(sizes))
+
+	for _, width := range sizes {
+		for _, height := range sizes {
+			if width < minW || height < minH || totalArea > width*height {
+				continue
 			}
+
+			candidates = append(candidates, candidate{
+				width:  width,
+				height: height,
+				score:  candidateScore(width, height, opts.AspectPenalty),
+			})
 		}
-	} else {
-		for _, h := range sizes {
-			for _, w := range sizes {
-				try(w, h)
-			}
+	}
+
+	slices.SortFunc(candidates, func(a, b candidate) int {
+		if a.score < b.score {
+			return -1
+		}
+		if a.score > b.score {
+			return 1
+		}
+
+		if isBetterTie(a.width, a.height, b.width, b.height, opts.PreferHeight) {
+			return -1
+		}
+		if isBetterTie(b.width, b.height, a.width, a.height, opts.PreferHeight) {
+			return 1
+		}
+
+		return 0
+	})
+
+	// Score ordering makes the first fitting bin optimal and avoids probing worse bins.
+	for _, candidate := range candidates {
+		try(candidate.width, candidate.height)
+		if bestW > 0 {
+			return bestW, bestH, bestPlacements, true
 		}
 	}
 
@@ -111,11 +142,7 @@ func findFirstFitPlan(
 			return nil, false
 		}
 
-		if opts.ForceSquare {
-			if w != h {
-				return nil, false
-			}
-		} else if absPowerDiff(w, h) > 1 {
+		if opts.ForceSquare && w != h {
 			return nil, false
 		}
 		if totalArea > w*h {
