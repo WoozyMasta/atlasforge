@@ -292,6 +292,7 @@ func TestPlanSizeSearchSupportsRotation(t *testing.T) {
 	opts := Options{
 		MinSize:      16,
 		MaxSize:      64,
+		Padding:      2,
 		AllowRotate:  true,
 		PreferHeight: true,
 		Heuristic:    HeuristicBestShortSideFit,
@@ -306,6 +307,9 @@ func TestPlanSizeSearchSupportsRotation(t *testing.T) {
 	}
 	if !layout.Placements[0].Rotated {
 		t.Fatal("placement is not rotated")
+	}
+	if layout.Render == nil || *layout.Render != (RenderSettings{Padding: 2}) {
+		t.Fatalf("rotated layout render settings = %+v, want padding=2", layout.Render)
 	}
 }
 

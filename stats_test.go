@@ -21,7 +21,18 @@ func TestAnalyzeLayoutCalculatesLegacyPaddingStats(t *testing.T) {
 		Height:     8,
 		Placements: []Placement{{ID: "icon", X: 1, Y: 1, Width: 2, Height: 3}},
 	}
-	stats, err := AnalyzeLayout(layout, 1)
+
+	encoded, err := json.Marshal(layout)
+	if err != nil {
+		t.Fatalf("Marshal legacy layout: %v", err)
+	}
+
+	var decoded Layout
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal legacy layout: %v", err)
+	}
+
+	stats, err := AnalyzeLayout(&decoded, 1)
 	if err != nil {
 		t.Fatalf("AnalyzeLayout: %v", err)
 	}
@@ -45,7 +56,7 @@ func TestAnalyzeLayoutCalculatesLegacyPaddingStats(t *testing.T) {
 		)
 	}
 
-	if layout.Render != nil {
+	if decoded.Render != nil {
 		t.Fatal("AnalyzeLayout mutated legacy layout render settings")
 	}
 }

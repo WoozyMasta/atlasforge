@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning][].
 * Fix MaxRects best-area scoring for large free rectangles.
 * Consider rectangular atlas candidates up to the configured bounds
   when `ForceSquare` is disabled.
+* Preserve requested padding in layout metadata when extrusion is disabled.
 * Preserve non-zero source image bounds when rendering sprites.
 
 ## [0.1.0][] - 2026-03-04

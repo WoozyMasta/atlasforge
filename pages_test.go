@@ -35,6 +35,111 @@ func TestPlanPagesEmptyReturnsEmptySlice(t *testing.T) {
 	}
 }
 
+func TestPagePlanningAndRenderingRecordPaddingWithoutExtrusion(t *testing.T) {
+	t.Parallel()
+
+	items := []Item{
+		{ID: "first", Width: 10, Height: 10},
+		{ID: "second", Width: 10, Height: 10},
+	}
+	opts := Options{MinSize: 8, MaxSize: 16, Padding: 2, ForceSquare: true}
+	wantSettings := RenderSettings{Padding: 2}
+
+	layouts, err := PlanPages(items, opts)
+	if err != nil {
+		t.Fatalf("PlanPages: %v", err)
+	}
+	if len(layouts) != 2 {
+		t.Fatalf("PlanPages returned %d layouts, want 2", len(layouts))
+	}
+	for i := range layouts {
+		if layouts[i].Render == nil || *layouts[i].Render != wantSettings {
+			t.Fatalf("PlanPages layout %d render settings = %+v, want %+v", i, layouts[i].Render, wantSettings)
+		}
+	}
+	fallback := layoutFromMaxBin(items[:1], []mrRect{{W: 14, H: 14}}, opts)
+	if fallback.Render == nil || *fallback.Render != wantSettings {
+		t.Fatalf("fallback render settings = %+v, want %+v", fallback.Render, wantSettings)
+	}
+
+	source := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	for y := range 10 {
+		for x := range 10 {
+			source.SetRGBA(x, y, color.RGBA{R: uint8(x * 11), G: uint8(y * 13), B: 77, A: 255})
+		}
+	}
+
+	sources := []Sprite{
+		{ID: "first", Image: source},
+		{ID: "second", Image: image.NewRGBA(image.Rect(0, 0, 10, 10))},
+	}
+	planned, err := Plan(items[:1], opts)
+	if err != nil {
+		t.Fatalf("Plan single page: %v", err)
+	}
+
+	plannedImage, err := Render(planned, []Source{{ID: "first", Image: source}})
+	if err != nil {
+		t.Fatalf("Render planned layout: %v", err)
+	}
+
+	packed, err := Pack(sources[:1], opts)
+	if err != nil {
+		t.Fatalf("Pack: %v", err)
+	}
+	if packed.Layout.Render == nil || *packed.Layout.Render != wantSettings {
+		t.Fatalf("Pack render settings = %+v, want %+v", packed.Layout.Render, wantSettings)
+	}
+	if !reflect.DeepEqual(packed.Image, plannedImage) {
+		t.Fatal("Pack pixels differ from rendering the planned layout")
+	}
+
+	atlases, err := PackPages(sources, opts)
+	if err != nil {
+		t.Fatalf("PackPages: %v", err)
+	}
+	if len(atlases) != 2 {
+		t.Fatalf("PackPages returned %d atlases, want 2", len(atlases))
+	}
+	for i := range atlases {
+		if atlases[i].Layout.Render == nil || *atlases[i].Layout.Render != wantSettings {
+			t.Fatalf(
+				"PackPages layout %d render settings = %+v, want %+v",
+				i, atlases[i].Layout.Render, wantSettings,
+			)
+		}
+	}
+
+	load := func(string) (image.Image, error) {
+		return source, nil
+	}
+	loadedImage, err := RenderWithLoader(planned, load)
+	if err != nil {
+		t.Fatalf("RenderWithLoader planned layout: %v", err)
+	}
+	if !reflect.DeepEqual(loadedImage, plannedImage) {
+		t.Fatal("RenderWithLoader pixels differ from Render")
+	}
+
+	pageCount := 0
+	err = BuildPages(items, opts, load, func(_ int, atlas *Atlas) error {
+		if atlas.Layout.Render == nil || *atlas.Layout.Render != wantSettings {
+			t.Fatalf(
+				"BuildPages layout render settings = %+v, want %+v",
+				atlas.Layout.Render, wantSettings,
+			)
+		}
+		pageCount++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("BuildPages: %v", err)
+	}
+	if pageCount != 2 {
+		t.Fatalf("BuildPages emitted %d pages, want 2", pageCount)
+	}
+}
+
 func TestPlanPagesSinglePageMatchesPlan(t *testing.T) {
 	t.Parallel()
 

@@ -95,7 +95,7 @@ func TestPlanValidateOptions(t *testing.T) {
 	}
 }
 
-func TestPlanRecordsRenderSettingsForExtrusion(t *testing.T) {
+func TestPlanRecordsPaddingAndExtrusionSettings(t *testing.T) {
 	t.Parallel()
 
 	baseOptions := Options{MinSize: 8, MaxSize: 32, Padding: 2}
@@ -105,8 +105,44 @@ func TestPlanRecordsRenderSettingsForExtrusion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan without extrusion: %v", err)
 	}
-	if withoutExtrusion.Render != nil {
-		t.Fatalf("Render settings without extrusion = %+v, want nil", withoutExtrusion.Render)
+
+	wantPadding := RenderSettings{Padding: 2}
+	if withoutExtrusion.Render == nil || *withoutExtrusion.Render != wantPadding {
+		t.Fatalf(
+			"Render settings without extrusion = %+v, want %+v",
+			withoutExtrusion.Render, wantPadding,
+		)
+	}
+
+	encoded, err := json.Marshal(withoutExtrusion)
+	if err != nil {
+		t.Fatalf("Marshal without extrusion: %v", err)
+	}
+
+	var decoded Layout
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal without extrusion: %v", err)
+	}
+
+	if decoded.Render == nil || *decoded.Render != wantPadding {
+		t.Fatalf("round-tripped render settings = %+v, want %+v", decoded.Render, wantPadding)
+	}
+	if _, err := AnalyzeLayout(&decoded, 0); !errors.Is(err, ErrInvalidLayout) {
+		t.Fatalf("AnalyzeLayout mismatched padding error = %v, want ErrInvalidLayout", err)
+	}
+	if _, err := AnalyzeLayout(&decoded, 2); err != nil {
+		t.Fatalf("AnalyzeLayout recorded padding: %v", err)
+	}
+
+	emptyWithoutExtrusion, err := Plan(nil, baseOptions)
+	if err != nil {
+		t.Fatalf("Plan empty input without extrusion: %v", err)
+	}
+	if emptyWithoutExtrusion.Render == nil || *emptyWithoutExtrusion.Render != wantPadding {
+		t.Fatalf(
+			"empty render settings without extrusion = %+v, want %+v",
+			emptyWithoutExtrusion.Render, wantPadding,
+		)
 	}
 
 	baseOptions.Extrude = 2
@@ -124,6 +160,15 @@ func TestPlanRecordsRenderSettingsForExtrusion(t *testing.T) {
 	}
 	if empty.Render == nil || *empty.Render != *withExtrusion.Render {
 		t.Fatalf("empty Plan render settings = %+v, want %+v", empty.Render, withExtrusion.Render)
+	}
+
+	zeroOptions := Options{MinSize: 8, MaxSize: 32}
+	zeroPadding, err := Plan(items, zeroOptions)
+	if err != nil {
+		t.Fatalf("Plan with zero render settings: %v", err)
+	}
+	if zeroPadding.Render != nil {
+		t.Fatalf("zero render settings = %+v, want nil", zeroPadding.Render)
 	}
 }
 
@@ -378,6 +423,7 @@ func TestPlanLayoutStableAcrossHeuristics(t *testing.T) {
 	}
 	want := map[Heuristic]string{
 		HeuristicBestShortSideFit: `{
+	"render": {"padding": 1},
 	"placements": [
 		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
 		{"id": "a", "x": 1, "y": 17, "width": 10, "height": 12, "rotated": false},
@@ -387,6 +433,7 @@ func TestPlanLayoutStableAcrossHeuristics(t *testing.T) {
 	"width": 32,
 	"height": 32}`,
 		HeuristicBestLongSideFit: `{
+	"render": {"padding": 1},
 	"placements": [
 		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
 		{"id": "a", "x": 8, "y": 1, "width": 10, "height": 12, "rotated": false},
@@ -396,6 +443,7 @@ func TestPlanLayoutStableAcrossHeuristics(t *testing.T) {
 	"width": 32,
 	"height": 32}`,
 		HeuristicBestAreaFit: `{
+	"render": {"padding": 1},
 	"placements": [
 		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
 		{"id": "a", "x": 1, "y": 17, "width": 10, "height": 12, "rotated": false},
@@ -405,6 +453,7 @@ func TestPlanLayoutStableAcrossHeuristics(t *testing.T) {
 	"width": 32,
 	"height": 32}`,
 		HeuristicBottomLeft: `{
+	"render": {"padding": 1},
 	"placements": [
 		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
 		{"id": "a", "x": 8, "y": 1, "width": 10, "height": 12, "rotated": false},
@@ -414,6 +463,7 @@ func TestPlanLayoutStableAcrossHeuristics(t *testing.T) {
 	"width": 32,
 	"height": 32}`,
 		HeuristicContactPoint: `{
+	"render": {"padding": 1},
 	"placements": [
 		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
 		{"id": "a", "x": 8, "y": 1, "width": 10, "height": 12, "rotated": false},
@@ -423,6 +473,7 @@ func TestPlanLayoutStableAcrossHeuristics(t *testing.T) {
 	"width": 32,
 	"height": 32}`,
 		HeuristicFirstFit: `{
+	"render": {"padding": 1},
 	"placements": [
 		{"id": "c", "x": 1, "y": 1, "width": 5, "height": 14, "rotated": false},
 		{"id": "a", "x": 8, "y": 1, "width": 10, "height": 12, "rotated": false},

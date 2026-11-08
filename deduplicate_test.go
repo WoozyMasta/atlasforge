@@ -72,6 +72,9 @@ func TestPackDeduplicatesRenderedPixelsAcrossImageTypes(t *testing.T) {
 	if got := len(atlas.Layout.Placements); got != len(sprites) {
 		t.Fatalf("logical placements = %d, want %d", got, len(sprites))
 	}
+	if atlas.Layout.Render == nil || atlas.Layout.Render.Padding != 1 {
+		t.Fatalf("deduplicated layout render settings = %+v, want padding=1", atlas.Layout.Render)
+	}
 
 	canonicalCount := 0
 	placementByID := make(map[string]Placement, len(sprites))

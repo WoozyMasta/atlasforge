@@ -67,9 +67,9 @@ func Plan(items []Item, opts Options) (*Layout, error) {
 	}, nil
 }
 
-// renderSettingsForOptions records settings only when rendering needs them.
+// renderSettingsForOptions records padding and extrusion needed to validate or reproduce rendering.
 func renderSettingsForOptions(opts Options) *RenderSettings {
-	if opts.Extrude == 0 {
+	if opts.Padding == 0 && opts.Extrude == 0 {
 		return nil
 	}
 

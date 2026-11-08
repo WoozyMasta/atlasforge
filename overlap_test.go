@@ -152,6 +152,9 @@ func TestOverlapPackFormsNMemberZonesAndRendersExactly(t *testing.T) {
 			if len(atlas.Layout.OverlapBlocks) != 1 {
 				t.Fatalf("overlap blocks = %d, want 1", len(atlas.Layout.OverlapBlocks))
 			}
+			if atlas.Layout.Render == nil || atlas.Layout.Render.Padding != 2 {
+				t.Fatalf("overlap layout render settings = %+v, want padding=2", atlas.Layout.Render)
+			}
 
 			block := atlas.Layout.OverlapBlocks[0]
 			if got := countOverlapMembers(atlas.Layout.Placements, block.ID); got != count {
