@@ -9,6 +9,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"reflect"
 	"testing"
 )
 
@@ -189,6 +190,113 @@ func TestOverlapPackFormsNMemberZonesAndRendersExactly(t *testing.T) {
 				t.Fatal("Pack and Render pixels differ")
 			}
 		})
+	}
+}
+
+func TestOverlapRoundTripPreservesGroupsAliasesAndStandaloneSprites(t *testing.T) {
+	t.Parallel()
+
+	for _, alpha := range []uint8{0, 255} {
+		t.Run("alpha="+itoa(int(alpha)), func(t *testing.T) {
+			t.Parallel()
+
+			edgeColor := color.RGBA{R: 21, G: 42, B: 63, A: alpha}
+			first := makeOverlapImage(32, 8, edgeColor, 1)
+			second := makeOverlapImage(32, 8, edgeColor, 2)
+			neighbor := makeOverlapImage(32, 8, color.RGBA{R: 90, G: 80, B: 70, A: 255}, 3)
+			sprites := []Sprite{
+				{ID: "a", Image: first},
+				{ID: "b", Image: second},
+				{ID: "alias", Image: copyRGBA(first)},
+				{ID: "neighbor", Image: neighbor},
+			}
+			options := overlapTestOptions()
+			options.Deduplicate = true
+
+			atlas, err := Pack(sprites, options)
+			if err != nil {
+				t.Fatalf("Pack: %v", err)
+			}
+			if len(atlas.Layout.OverlapBlocks) != 1 {
+				t.Fatalf("overlap blocks = %d, want 1", len(atlas.Layout.OverlapBlocks))
+			}
+
+			placements := placementMap(atlas.Layout.Placements)
+			firstPlacement, secondPlacement := placements["a"], placements["b"]
+			aliasPlacement, neighborPlacement := placements["alias"], placements["neighbor"]
+			if firstPlacement.OverlapGroup == 0 || firstPlacement.OverlapGroup != secondPlacement.OverlapGroup {
+				t.Fatalf(
+					"group IDs = %d/%d, want one shared nonzero group",
+					firstPlacement.OverlapGroup, secondPlacement.OverlapGroup,
+				)
+			}
+			if aliasPlacement.AliasOf != "a" ||
+				!samePlacementGeometry(aliasPlacement, firstPlacement) {
+				t.Fatalf("alias placement = %+v, want geometry shared with a", aliasPlacement)
+			}
+			if neighborPlacement.OverlapGroup != 0 {
+				t.Fatalf("standalone neighbor joined overlap group %d", neighborPlacement.OverlapGroup)
+			}
+			if got := countOverlapMembers(atlas.Layout.Placements, firstPlacement.OverlapGroup); got != 2 {
+				t.Fatalf("overlap group members = %d, want 2", got)
+			}
+
+			encoded, err := json.Marshal(atlas.Layout)
+			if err != nil {
+				t.Fatalf("Marshal layout: %v", err)
+			}
+			var decoded Layout
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatalf("Unmarshal layout: %v", err)
+			}
+			if !reflect.DeepEqual(decoded, atlas.Layout) {
+				t.Fatalf("round-tripped layout = %+v, want %+v", decoded, atlas.Layout)
+			}
+
+			sources := make([]Source, len(sprites))
+			for i := range sprites {
+				sources[i] = Source{
+					ID:    sprites[i].ID,
+					Image: sprites[i].Image,
+				}
+			}
+
+			rendered, err := Render(&decoded, sources)
+			if err != nil {
+				t.Fatalf("Render round-tripped layout: %v", err)
+			}
+			if !sameRGBAImage(atlas.Image, rendered) {
+				t.Fatal("round-tripped render differs from Pack output")
+			}
+		})
+	}
+}
+
+func TestOverlapRejectsOnePixelEdgeDifference(t *testing.T) {
+	t.Parallel()
+
+	edgeColor := color.RGBA{R: 21, G: 42, B: 63, A: 255}
+	first := makeOverlapImage(32, 8, edgeColor, 1)
+	second := makeOverlapImage(32, 8, edgeColor, 2)
+	different := color.RGBA{R: 22, G: 42, B: 63, A: 255}
+	for _, point := range []image.Point{
+		{X: 0, Y: 16},
+		{X: 31, Y: 16},
+		{X: 16, Y: 0},
+		{X: 16, Y: 31},
+	} {
+		second.SetRGBA(point.X, point.Y, different)
+	}
+
+	atlas, err := Pack([]Sprite{
+		{ID: "first", Image: first},
+		{ID: "second", Image: second},
+	}, overlapTestOptions())
+	if err != nil {
+		t.Fatalf("Pack: %v", err)
+	}
+	if len(atlas.Layout.OverlapBlocks) != 0 {
+		t.Fatalf("one-pixel edge differences formed %d overlap blocks", len(atlas.Layout.OverlapBlocks))
 	}
 }
 
