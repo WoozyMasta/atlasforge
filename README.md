@@ -20,7 +20,7 @@ where you need predictable atlas output plus JSON friendly placement data
 ## Install
 
 ```bash
-go install github.com/woozymasta/atlasforge
+go get github.com/woozymasta/atlasforge
 ```
 
 ## Packing Examples
@@ -164,6 +164,10 @@ The resulting atlas will not be smaller than this value.
 page APIs start another page when needed,
 but return an error if one item cannot fit by itself.
 
+The planner searches a discrete size ladder for each side:
+it starts at `MinSize`, doubles candidates, and includes `MaxSize`.
+It does not test every pixel dimension.
+
 ### Sprite padding
 
 `Padding` reserves this many empty pixels around each sprite.
@@ -187,7 +191,9 @@ The image compares padding alone with padding filled by extrusion.
 
 `AspectPenalty` biases candidate selection toward less elongated atlases.
 `0` disables the bias; `DefaultOptions()` uses `0.25`.
-`HeuristicFirstFit` ignores this setting.
+It changes candidate scores but does not exclude rectangular candidates.
+`HeuristicFirstFit` ignores it and uses the first fitting size
+in its stable search order.
 
 ![Sprite aspect penalty](examples/penalty.png)
 
@@ -243,7 +249,7 @@ opts.ColorKey = &atlasforge.ColorKeyOptions{
 
 `Deduplicate` stores identical rendered pixels once
 in image-based APIs and maps duplicate IDs to that placement.
-Alias entries remain in the layout.
+Alias entries remain in the layout with `alias_of` set to the canonical ID.
 The example shows duplicate inputs
 before and after sharing their packed rectangles.
 
@@ -268,6 +274,33 @@ Each page is compacted within the configured size bounds.
 This is an API mode, not an `Options` field.
 
 ![Sprites split across multiple atlas pages](examples/multi-page.png)
+
+`PackPages` returns all rendered pages and keeps them in memory.
+`BuildPages` passes one rendered page to the consumer at a time
+and does not retain prior page images
+or loaded sources between callbacks unless the caller does so.
+It keeps layout metadata and may load sources
+more than once during preprocessing.
+Neither API enforces a memory or RSS limit.
+
+## Layout metadata
+
+When padding is nonzero, `Layout.Render.Padding` records
+it even if edge extrusion is disabled.
+Older layouts may omit `render`; pass their known padding to `AnalyzeLayout`
+because it cannot be recovered from legacy JSON.
+
+With transparent or color-key trimming, `width`
+and `height` describe the cropped sprite before rotation.
+`original_width`, `original_height`, `offset_x`,
+and `offset_y` locate that crop in the source image.
+A consumer rebuilding a sprite from its source must crop to those bounds,
+then apply the clockwise rotation when `rotated` is true.
+
+`alias_of` points to the canonical placement for a deduplicated sprite.
+`overlap_group` and `OverlapBlocks` describe intentional shared pixel regions;
+consumers must use the block geometry when reconstructing overlap layouts.
+Ordinary placements can also be rotated, so consumers must honor `rotated`.
 
 ## Practical Example
 
@@ -359,6 +392,9 @@ func main() {
 
 ```json
 {
+  "render": {
+    "padding": 2
+  },
   "placements": [
     {
       "id": "assets/icons/ok.png",
@@ -384,7 +420,7 @@ func main() {
 
 In placement entries, `rotated: true` means the source sprite
 was placed with a `+90` degree clockwise rotation in the atlas.
-`width` and `height` store original sprite dimensions before rotation.
+`width` and `height` store packed content dimensions before rotation.
 
 <!-- links -->
 
