@@ -202,6 +202,12 @@ type RenderSettings struct {
 	TrimTransparent bool `json:"trim_transparent,omitempty" yaml:"trim_transparent,omitempty"`
 }
 
+// RenderOptions contains caller-side limits that are not stored in Layout.
+type RenderOptions struct {
+	// MaxBytes caps the RGBA output buffer size; zero disables this limit.
+	MaxBytes int64 `json:"max_bytes,omitempty" yaml:"max_bytes,omitempty"`
+}
+
 // Placement describes final coordinates of one packed item.
 type Placement struct {
 	// ID matches Item.ID / Sprite.ID used for this placement.

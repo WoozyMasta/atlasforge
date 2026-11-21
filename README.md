@@ -302,6 +302,12 @@ then apply the clockwise rotation when `rotated` is true.
 consumers must use the block geometry when reconstructing overlap layouts.
 Ordinary placements can also be rotated, so consumers must honor `rotated`.
 
+For untrusted layouts, render with `RenderWithOptions`
+or `RenderWithLoaderOptions` and set `RenderOptions.MaxBytes`.
+A zero value leaves the output RGBA buffer unlimited.
+The limit does not cover total process memory or memory
+used by source image decoders.
+
 ## Practical Example
 
 The example below shows a practical flow: read source files from disk,

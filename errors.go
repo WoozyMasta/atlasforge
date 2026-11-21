@@ -19,6 +19,9 @@ var (
 	// ErrLayoutRequired reports a missing layout for rendering.
 	ErrLayoutRequired = errors.New("layout is required")
 
+	// ErrRenderLimitExceeded reports that the RGBA output buffer exceeds MaxBytes.
+	ErrRenderLimitExceeded = errors.New("render output exceeds byte limit")
+
 	// ErrInvalidLayout reports malformed layout dimensions.
 	ErrInvalidLayout = errors.New("invalid layout")
 

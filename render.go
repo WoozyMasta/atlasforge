@@ -13,7 +13,16 @@ import (
 
 // Render renders a precomputed layout using provided image sources.
 func Render(layout *Layout, sources []Source) (image.Image, error) {
+	return RenderWithOptions(layout, sources, RenderOptions{})
+}
+
+// RenderWithOptions renders a layout with caller-supplied resource limits.
+// MaxBytes limits only the RGBA output buffer and is unlimited when zero.
+func RenderWithOptions(layout *Layout, sources []Source, options RenderOptions) (image.Image, error) {
 	if err := validateLayout(layout); err != nil {
+		return nil, err
+	}
+	if err := validateRenderBufferLimit(layout, options.MaxBytes); err != nil {
 		return nil, err
 	}
 
@@ -32,14 +41,65 @@ func Render(layout *Layout, sources []Source) (image.Image, error) {
 // RenderWithLoader renders a layout by loading each source immediately before drawing it.
 // Images are not cached; the loader should return a valid image on every call.
 func RenderWithLoader(layout *Layout, load ImageLoader) (image.Image, error) {
+	return RenderWithLoaderOptions(layout, load, RenderOptions{})
+}
+
+// RenderWithLoaderOptions renders with lazy sources and caller-supplied resource limits.
+// MaxBytes limits only the RGBA output buffer and is unlimited when zero.
+func RenderWithLoaderOptions(
+	layout *Layout,
+	load ImageLoader,
+	options RenderOptions,
+) (image.Image, error) {
 	if load == nil {
 		return nil, ErrImageLoaderRequired
 	}
 	if err := validateLayout(layout); err != nil {
 		return nil, err
 	}
+	if err := validateRenderBufferLimit(layout, options.MaxBytes); err != nil {
+		return nil, err
+	}
 
 	return renderPrepared(layout, nil, load)
+}
+
+// validateRenderBufferLimit rejects invalid limits and oversized RGBA outputs.
+func validateRenderBufferLimit(layout *Layout, maxBytes int64) error {
+	if maxBytes < 0 {
+		return fmt.Errorf("%w: render MaxBytes must be non-negative: %d", ErrInvalidOptions, maxBytes)
+	}
+	if maxBytes == 0 {
+		return nil
+	}
+	if layout == nil {
+		return ErrLayoutRequired
+	}
+	if layout.Width <= 0 || layout.Height <= 0 {
+		return fmt.Errorf("%w: Width=%d Height=%d", ErrInvalidLayout, layout.Width, layout.Height)
+	}
+
+	area, err := checkedArea(int64(layout.Width), int64(layout.Height))
+	if err != nil {
+		return fmt.Errorf("%w: RGBA dimensions overflow", ErrInvalidLayout)
+	}
+
+	maxInt64 := int64(^uint64(0) >> 1)
+	if area > maxInt64/4 {
+		return fmt.Errorf("%w: RGBA buffer size overflows", ErrInvalidLayout)
+	}
+
+	bufferBytes := area * 4
+	if bufferBytes > maxBytes {
+		return fmt.Errorf(
+			"%w: required %d bytes, limit is %d",
+			ErrRenderLimitExceeded,
+			bufferBytes,
+			maxBytes,
+		)
+	}
+
+	return nil
 }
 
 // isNilImage detects nil interfaces and nil pointers stored in image.Image.

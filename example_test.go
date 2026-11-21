@@ -68,6 +68,32 @@ func ExampleRenderWithLoader() {
 	// 2x2
 }
 
+func ExampleRenderWithLoaderOptions() {
+	layout := &Layout{
+		Width:      2,
+		Height:     2,
+		Placements: []Placement{{ID: "icon", Width: 1, Height: 1}},
+	}
+	load := func(id string) (image.Image, error) {
+		if id != "icon" {
+			return nil, fmt.Errorf("unknown source %q", id)
+		}
+
+		return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil
+	}
+
+	img, err := RenderWithLoaderOptions(layout, load, RenderOptions{MaxBytes: 16})
+	if err != nil {
+		fmt.Println("render error")
+		return
+	}
+
+	fmt.Printf("%dx%d\n", img.Bounds().Dx(), img.Bounds().Dy())
+
+	// Output:
+	// 2x2
+}
+
 func ExampleBuildPages() {
 	items := []Item{{ID: "icon", Width: 2, Height: 2}}
 	opts := Options{MinSize: 2, MaxSize: 2, ForceSquare: true}

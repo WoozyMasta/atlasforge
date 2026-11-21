@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning][].
 
 ### Added
 
+* Caller-configurable RGBA output-buffer limits for rendering layouts.
 * Optional edge extrusion into reserved sprite padding.
 * Multi-page atlas planning and packing, including sequential callback builds
   and on-demand source loading for single- and multi-page rendering.

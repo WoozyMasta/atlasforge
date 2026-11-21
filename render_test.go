@@ -24,6 +24,102 @@ func TestRenderRequiresLayout(t *testing.T) {
 	}
 }
 
+func TestRenderWithOptionsEnforcesMaxBytes(t *testing.T) {
+	t.Parallel()
+
+	layout := &Layout{Width: 4, Height: 2}
+	if img, err := RenderWithOptions(
+		layout, nil, RenderOptions{MaxBytes: 31},
+	); img != nil || !errors.Is(err, ErrRenderLimitExceeded) {
+		t.Fatalf("below-limit result = (%v, %v), want nil and ErrRenderLimitExceeded", img, err)
+	}
+
+	if img, err := RenderWithOptions(
+		layout, nil, RenderOptions{MaxBytes: 32},
+	); err != nil ||
+		img == nil || img.Bounds() != image.Rect(0, 0, 4, 2) {
+		t.Fatalf("exact-limit result = (%v, %v), want a 4x2 image", img, err)
+	}
+
+	if img, err := RenderWithOptions(
+		layout, nil, RenderOptions{},
+	); err != nil || img == nil {
+		t.Fatalf("unlimited result = (%v, %v), want an image", img, err)
+	}
+
+	if img, err := RenderWithOptions(
+		layout, nil, RenderOptions{MaxBytes: -1},
+	); img != nil || !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("negative-limit result = (%v, %v), want nil and ErrInvalidOptions", img, err)
+	}
+}
+
+func TestRenderWithLoaderOptionsRejectsBeforeLoading(t *testing.T) {
+	t.Parallel()
+
+	layout := &Layout{
+		Width:  1024,
+		Height: 1024,
+		Placements: []Placement{{
+			ID:     "sprite",
+			Width:  1,
+			Height: 1,
+		}},
+	}
+
+	loaderCalled := false
+	img, err := RenderWithLoaderOptions(layout, func(string) (image.Image, error) {
+		loaderCalled = true
+		return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil
+	}, RenderOptions{MaxBytes: 4*1024*1024 - 1})
+
+	if img != nil || !errors.Is(err, ErrRenderLimitExceeded) {
+		t.Fatalf("limited result = (%v, %v), want nil and ErrRenderLimitExceeded", img, err)
+	}
+	if loaderCalled {
+		t.Fatal("loader called before rejecting the output buffer size")
+	}
+}
+
+func TestRenderWithOptionsRejectsOverflowBeforeLimit(t *testing.T) {
+	t.Parallel()
+
+	maxInt := int(^uint(0) >> 1)
+	layout := &Layout{Width: maxInt, Height: 2}
+	if img, err := RenderWithOptions(
+		layout, nil, RenderOptions{MaxBytes: 1},
+	); img != nil || !errors.Is(err, ErrInvalidLayout) {
+		t.Fatalf("overflow result = (%v, %v), want nil and ErrInvalidLayout", img, err)
+	}
+}
+
+func TestRenderWithOptionsPreservesPixels(t *testing.T) {
+	t.Parallel()
+
+	source := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	source.SetRGBA(0, 0, color.RGBA{R: 40, A: 255})
+	source.SetRGBA(1, 1, color.RGBA{R: 80, G: 70, A: 255})
+	layout := &Layout{
+		Width:      4,
+		Height:     4,
+		Placements: []Placement{{ID: "sprite", X: 1, Y: 1, Width: 2, Height: 2}},
+	}
+	sources := []Source{{ID: "sprite", Image: source}}
+
+	want, err := Render(layout, sources)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	got, err := RenderWithOptions(layout, sources, RenderOptions{MaxBytes: 64})
+	if err != nil {
+		t.Fatalf("RenderWithOptions: %v", err)
+	}
+	if !bytes.Equal(got.(*image.RGBA).Pix, want.(*image.RGBA).Pix) {
+		t.Fatal("limited render pixels differ from Render")
+	}
+}
+
 func TestRenderWithLoaderMatchesRenderAndLoadsInPlacementOrder(t *testing.T) {
 	t.Parallel()
 
