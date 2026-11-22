@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning][].
 ### Removed
 -->
 
-## Unreleased
+## [0.2.0][] - 2026-11-22
 
 ### Added
 
@@ -49,6 +49,8 @@ and this project adheres to [Semantic Versioning][].
   when `ForceSquare` is disabled.
 * Preserve requested padding in layout metadata when extrusion is disabled.
 * Preserve non-zero source image bounds when rendering sprites.
+
+[0.2.0]: https://github.com/WoozyMasta/atlasforge/compare/v0.1.0...v0.2.0
 
 ## [0.1.0][] - 2026-03-04
 
