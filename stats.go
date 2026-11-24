@@ -424,20 +424,76 @@ func AnalyzePages(layouts []Layout, padding int) (PagesStats, error) {
 // addLayoutStats combines sums while deferring aggregate ratio calculation.
 func addLayoutStats(total *LayoutStats, page LayoutStats) error {
 	fields := []statsSum{
-		{name: "atlas area", total: &total.AtlasArea, value: page.AtlasArea},
-		{name: "logical count", total: &total.LogicalCount, value: page.LogicalCount},
-		{name: "physical count", total: &total.PhysicalCount, value: page.PhysicalCount},
-		{name: "alias count", total: &total.AliasCount, value: page.AliasCount},
-		{name: "content area", total: &total.ContentArea, value: page.ContentArea},
-		{name: "reserved area", total: &total.ReservedArea, value: page.ReservedArea},
-		{name: "physical rotations", total: &total.PhysicalRotationCount, value: page.PhysicalRotationCount},
-		{name: "logical rotations", total: &total.LogicalRotationCount, value: page.LogicalRotationCount},
-		{name: "logical trim area", total: &total.LogicalTrimSavedArea, value: page.LogicalTrimSavedArea},
-		{name: "physical trim area", total: &total.PhysicalTrimSavedArea, value: page.PhysicalTrimSavedArea},
-		{name: "overlap groups", total: &total.OverlapGroupCount, value: page.OverlapGroupCount},
-		{name: "overlap members", total: &total.OverlapGroupMembers, value: page.OverlapGroupMembers},
-		{name: "overlap block area", total: &total.OverlapBlockArea, value: page.OverlapBlockArea},
-		{name: "shared overlap pixels", total: &total.OverlapSharedPixels, value: page.OverlapSharedPixels},
+		{
+			name:  "atlas area",
+			total: &total.AtlasArea,
+			value: page.AtlasArea,
+		},
+		{
+			name:  "logical count",
+			total: &total.LogicalCount,
+			value: page.LogicalCount,
+		},
+		{
+			name:  "physical count",
+			total: &total.PhysicalCount,
+			value: page.PhysicalCount,
+		},
+		{
+			name:  "alias count",
+			total: &total.AliasCount,
+			value: page.AliasCount,
+		},
+		{
+			name:  "content area",
+			total: &total.ContentArea,
+			value: page.ContentArea,
+		},
+		{
+			name:  "reserved area",
+			total: &total.ReservedArea,
+			value: page.ReservedArea,
+		},
+		{
+			name:  "physical rotations",
+			total: &total.PhysicalRotationCount,
+			value: page.PhysicalRotationCount,
+		},
+		{
+			name:  "logical rotations",
+			total: &total.LogicalRotationCount,
+			value: page.LogicalRotationCount,
+		},
+		{
+			name:  "logical trim area",
+			total: &total.LogicalTrimSavedArea,
+			value: page.LogicalTrimSavedArea,
+		},
+		{
+			name:  "physical trim area",
+			total: &total.PhysicalTrimSavedArea,
+			value: page.PhysicalTrimSavedArea,
+		},
+		{
+			name:  "overlap groups",
+			total: &total.OverlapGroupCount,
+			value: page.OverlapGroupCount,
+		},
+		{
+			name:  "overlap members",
+			total: &total.OverlapGroupMembers,
+			value: page.OverlapGroupMembers,
+		},
+		{
+			name:  "overlap block area",
+			total: &total.OverlapBlockArea,
+			value: page.OverlapBlockArea,
+		},
+		{
+			name:  "shared overlap pixels",
+			total: &total.OverlapSharedPixels,
+			value: page.OverlapSharedPixels,
+		},
 	}
 
 	for _, field := range fields {

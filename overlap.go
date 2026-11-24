@@ -494,7 +494,13 @@ func solveOverlapGrid(members []overlapMember, shareX, shareY, maxContentSide in
 			continue
 		}
 
-		candidate := gridCandidate{columns: columns, rows: rows, width: width, height: height, area: area}
+		candidate := gridCandidate{
+			columns: columns,
+			rows:    rows,
+			width:   width,
+			height:  height,
+			area:    area,
+		}
 		candidates = append(candidates, candidate)
 		minimumArea = min(minimumArea, area)
 	}

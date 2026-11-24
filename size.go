@@ -80,9 +80,9 @@ func findOptimalPlan(items []Item, opts Options) (width, height int, placements 
 
 	// candidate keeps each feasible atlas size paired with its selection score.
 	type candidate struct {
-		width  int
-		height int
-		score  float64
+		width  int     // atlas candidate width.
+		height int     // atlas candidate height.
+		score  float64 // precomputed selection score.
 	}
 	candidates := make([]candidate, 0, len(sizes)*len(sizes))
 

@@ -12,7 +12,7 @@ import (
 	"image/draw"
 )
 
-// pixelHashSeed is process-local and never becomes part of the public layout.
+// pixelHashSeed randomizes hash buckets for image-driven pixel keys.
 var pixelHashSeed = maphash.MakeSeed()
 
 // imageHashFunc hashes the rendered RGBA pixels in a bounded-memory pass.
@@ -20,44 +20,31 @@ type imageHashFunc func(src image.Image) uint64
 
 // pixelHashKey scopes a hash to one physical crop size.
 type pixelHashKey struct {
-	// width is the crop width before rotation.
-	width int
-	// height is the crop height before rotation.
-	height int
-	// hash is the process-local pixel hash.
-	hash uint64
+	width  int    // crop width before rotation.
+	height int    // crop height before rotation.
+	hash   uint64 // process-local pixel hash.
 }
 
 // inMemoryCandidate keeps a borrowed view for Pack and PackPages comparisons.
 type inMemoryCandidate struct {
-	// view reads normalized source pixels without copying the raster.
-	view image.Image
-	// item describes the physical canonical crop.
-	item Item
+	view image.Image // normalized source view without a raster copy.
+	item Item        // physical canonical crop geometry.
 }
 
 // dedupRecord stores geometry and dimensions required by the loader pipeline.
 type dedupRecord struct {
-	// id identifies the canonical source to load for exact comparisons.
-	id string
-	// item stores the canonical physical crop dimensions.
-	item Item
-	// sourceWidth is the source width before trimming.
-	sourceWidth int
-	// sourceHeight is the source height before trimming.
-	sourceHeight int
-	// trim stores the canonical source crop geometry when trimming changed bounds.
-	trim trimMetadata
-	// hasTrim reports whether trim metadata represents an actual crop.
-	hasTrim bool
+	id           string       // canonical source ID used for exact comparisons.
+	item         Item         // physical canonical crop geometry.
+	sourceWidth  int          // source width before trimming.
+	sourceHeight int          // source height before trimming.
+	trim         trimMetadata // crop geometry when trimming changed the bounds.
+	hasTrim      bool         // whether trim contains an actual crop.
 }
 
 // pixelRows reuses bounded row buffers while hashing and comparing candidates.
 type pixelRows struct {
-	// first holds normalized RGBA bytes for the current source row.
-	first image.RGBA
-	// second holds normalized RGBA bytes for an exact-comparison candidate.
-	second image.RGBA
+	first  image.RGBA // normalized RGBA bytes for the current source row.
+	second image.RGBA // normalized RGBA bytes for an exact-comparison candidate.
 }
 
 // hash hashes rendered rows using a reusable scratch row.
@@ -186,7 +173,10 @@ func deduplicatePreparedSpritesWithOptions(
 		}
 
 		if canonicalID != "" {
-			aliases = append(aliases, aliasRelation{id: item.ID, canonicalID: canonicalID})
+			aliases = append(aliases, aliasRelation{
+				id:          item.ID,
+				canonicalID: canonicalID,
+			})
 			continue
 		}
 
@@ -244,7 +234,11 @@ func prepareDeduplicatedItems(
 			hash = hashImage(view)
 		}
 
-		key := pixelHashKey{width: width, height: height, hash: hash}
+		key := pixelHashKey{
+			width:  width,
+			height: height,
+			hash:   hash,
+		}
 
 		canonicalID := ""
 		for _, candidate := range buckets[key] {
@@ -278,7 +272,10 @@ func prepareDeduplicatedItems(
 		}
 
 		if canonicalID != "" {
-			aliases = append(aliases, aliasRelation{id: item.ID, canonicalID: canonicalID})
+			aliases = append(aliases, aliasRelation{
+				id:          item.ID,
+				canonicalID: canonicalID,
+			})
 			continue
 		}
 

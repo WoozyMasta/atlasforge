@@ -156,8 +156,18 @@ func invalidRenderGeometry(variant byte) renderFuzzInput {
 	}
 
 	return renderFuzzInput{
-		layout:  renderFuzzLayout(4, 4, placement),
-		sources: []Source{{ID: "sprite", Image: image.NewRGBA(image.Rect(0, 0, max(placement.Width, 1), max(placement.Height, 1)))}},
+		layout: renderFuzzLayout(4, 4, placement),
+		sources: []Source{
+			{
+				ID: "sprite",
+				Image: image.NewRGBA(image.Rect(
+					0,
+					0,
+					max(placement.Width, 1),
+					max(placement.Height, 1),
+				)),
+			},
+		},
 		wantErr: ErrInvalidLayout,
 	}
 }

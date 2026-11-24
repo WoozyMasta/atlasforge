@@ -10,27 +10,21 @@ import (
 	"image/color"
 )
 
-// transparentPixelImage is the canonical transparent source for empty-alpha sprites.
+// transparentPixelImage is the fallback source for fully transparent trimmed sprites.
 var transparentPixelImage = image.NewRGBA(image.Rect(0, 0, 1, 1))
 
 // trimMetadata stores the reversible source geometry for one cropped sprite.
 type trimMetadata struct {
-	// originalWidth is the source width before trimming.
-	originalWidth int
-	// originalHeight is the source height before trimming.
-	originalHeight int
-	// offsetX is the crop's horizontal offset from source bounds.
-	offsetX int
-	// offsetY is the crop's vertical offset from source bounds.
-	offsetY int
+	originalWidth  int // source width before trimming.
+	originalHeight int // source height before trimming.
+	offsetX        int // crop's horizontal offset from source bounds.
+	offsetY        int // crop's vertical offset from source bounds.
 }
 
 // sourceImageView bounds reads to a crop without allocating a cropped raster.
 type sourceImageView struct {
-	// source provides the original pixels.
-	source image.Image
-	// bounds is the visible rectangle in original source coordinates.
-	bounds image.Rectangle
+	source image.Image     // original pixels read through the bounded view.
+	bounds image.Rectangle // visible rectangle in original source coordinates.
 }
 
 // imageSubImager exposes native bounded views for standard image types.
@@ -237,6 +231,7 @@ func sourceContentBounds(src image.Image, opts Options) (image.Rectangle, bool) 
 		return src.Bounds(), !src.Bounds().Empty()
 	}
 
+	// Key conversion changes the crop only when color-key or transparent trimming is enabled.
 	needsKeyScan := key != nil && (key.Trim || (key.ToAlpha && opts.TrimTransparent))
 	if !needsKeyScan {
 		return alphaBounds(src)

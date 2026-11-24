@@ -108,7 +108,7 @@ type Options struct {
 	// It is applied by image-based packing APIs, not geometry-only planning.
 	TrimTransparent bool `json:"trim_transparent,omitempty" yaml:"trim_transparent,omitempty"`
 
-	// Deduplicate aliases sprites with identical rendered pixels.
+	// Deduplicate merges sprites with identical rendered pixels and records aliases.
 	// It is applied by image-based packing APIs, not geometry-only planning.
 	Deduplicate bool `json:"deduplicate,omitempty" yaml:"deduplicate,omitempty"`
 
@@ -261,8 +261,9 @@ type Item struct {
 
 // Source binds an image payload to an item ID for rendering.
 type Source struct {
-	// Image provides pixels for rendering.
-	// Bounds must match Placement width/height for the same ID.
+	// Image provides the original pixels for rendering.
+	// Its bounds must match the placement's recorded original dimensions,
+	// or its content dimensions otherwise.
 	Image image.Image `json:"-" yaml:"-"`
 
 	// ID must match Placement.ID from a planned layout.

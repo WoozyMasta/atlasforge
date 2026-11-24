@@ -12,24 +12,17 @@ import (
 
 // occupiedRect is a canonical placement's reserved rectangle during validation.
 type occupiedRect struct {
-	// placementID identifies the canonical sprite.
-	placementID string
-	// minX is the left edge including recorded padding.
-	minX int
-	// minY is the top edge including recorded padding.
-	minY int
-	// maxX is the right edge including recorded padding.
-	maxX int
-	// maxY is the bottom edge including recorded padding.
-	maxY int
+	placementID string // canonical sprite represented by these bounds.
+	minX        int    // reserved left edge, including padding.
+	minY        int    // reserved top edge, including padding.
+	maxX        int    // reserved right edge, including padding.
+	maxY        int    // reserved bottom edge, including padding.
 }
 
 // aliasRelation maps one logical sprite ID to its canonical placement ID.
 type aliasRelation struct {
-	// id is the logical sprite represented by an alias placement.
-	id string
-	// canonicalID identifies the physical placement it shares.
-	canonicalID string
+	id          string // logical sprite represented by the alias placement.
+	canonicalID string // physical placement shared by the alias.
 }
 
 // validateAliases checks ID references, shared geometry, and canonical overlap.
@@ -184,7 +177,7 @@ func validateAliases(layout *Layout) error {
 		spanY = maxY - minY
 	}
 
-	// Sweep where placement starts spread farther apart to prune candidates.
+	// Sweep the wider axis so sorted bounds can prune more pair checks.
 	byX := spanX >= spanY
 	slices.SortFunc(canonicalRects, func(a, b occupiedRect) int {
 		if byX {

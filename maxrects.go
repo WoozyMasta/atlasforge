@@ -9,20 +9,24 @@ const maxScore int64 = 1<<63 - 1
 
 // mrRect is an internal MaxRects rectangle.
 type mrRect struct {
-	X, Y, W, H int
-	Rotated    bool
+	X       int  // Top-left X coordinate.
+	Y       int  // Top-left Y coordinate.
+	W       int  // Rectangle width.
+	H       int  // Rectangle height.
+	Rotated bool // Whether the item was rotated clockwise.
 }
 
 // maxRects implements MaxRects bin packing.
 type maxRects struct {
-	used []mrRect
-	free []mrRect
+	used []mrRect // Rectangles already placed in the bin.
+	free []mrRect // Remaining candidate rectangles.
 
-	pruneMarks       []bool
-	inlinePruneMarks [128]bool
+	pruneMarks       []bool    // Reusable marks for free lists larger than the embedded buffer.
+	inlinePruneMarks [128]bool // Embedded scratch space for common small free lists.
 
-	w, h        int
-	allowRotate bool
+	w           int  // Bin width.
+	h           int  // Bin height.
+	allowRotate bool // Whether placements may rotate by 90 degrees.
 }
 
 // newMaxRects creates a MaxRects planner for fixed atlas dimensions.
@@ -94,7 +98,7 @@ func (m *maxRects) Insert(w, h int, heuristic Heuristic) (mrRect, bool) {
 	return best, true
 }
 
-// placeFirstFit places one rectangle with cheaper maintenance for FirstFit.
+// placeFirstFit splits affected free rectangles and defers pruning for speed.
 func (m *maxRects) placeFirstFit(used mrRect) {
 	for i := 0; i < len(m.free); {
 		if m.splitFree(i, used) {
@@ -105,6 +109,7 @@ func (m *maxRects) placeFirstFit(used mrRect) {
 		i++
 	}
 
+	// FirstFit defers quadratic pruning until the free list is large, then prunes every eight placements.
 	shouldPrune := len(m.free) > 256 && (len(m.used)&7) == 7
 	if shouldPrune {
 		m.pruneFree()
@@ -113,7 +118,7 @@ func (m *maxRects) placeFirstFit(used mrRect) {
 	m.used = append(m.used, used)
 }
 
-// place consumes one free rectangle and splits affected free nodes.
+// place splits every free rectangle that intersects the placed rectangle.
 func (m *maxRects) place(used mrRect) {
 	for i := 0; i < len(m.free); {
 		if m.splitFree(i, used) {
@@ -236,7 +241,7 @@ func commonInterval(a0, a1, b0, b1 int) int64 {
 	return int64(end) - int64(start)
 }
 
-// splitFree splits one free rectangle around used rectangle if they overlap.
+// splitFree removes an overlapping occupied region by appending the remaining strips.
 func (m *maxRects) splitFree(freeIdx int, used mrRect) bool {
 	fr := m.free[freeIdx]
 
